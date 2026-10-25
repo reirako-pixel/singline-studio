@@ -1,0 +1,9 @@
+node_modules/
+release/
+bin/
+models/
+worker/.venv/
+worker/build/
+worker/dist/
+__pycache__/
+*.pyc

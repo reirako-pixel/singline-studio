@@ -1,0 +1,93 @@
+# Builds the Windows installer on GitHub's Windows machines and publishes it
+# as a GitHub Release, so it can be downloaded from the repository's
+# Releases page. Runs on every push to main, or by hand from the Actions tab.
+name: Build Windows installer
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+    inputs:
+      whisper_model:
+        description: "Speech model (tiny, base, small, medium)"
+        default: "small"
+        required: true
+      gpu:
+        description: "Include NVIDIA CUDA support (much larger)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # to publish the release
+
+concurrency:
+  group: build-windows
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      WHISPER_MODEL: ${{ github.event.inputs.whisper_model || 'small' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Re-use the downloaded AI models and pip packages between builds.
+      - name: Cache AI models
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: models-htdemucs-whisper-${{ env.WHISPER_MODEL }}-v1
+
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: pip-${{ hashFiles('worker/requirements.txt') }}-${{ github.event.inputs.gpu || 'false' }}
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $buildArgs = @{ WhisperModel = $env:WHISPER_MODEL }
+          if ("${{ github.event.inputs.gpu }}" -eq "true") { $buildArgs.Gpu = $true }
+          ./scripts/build-windows.ps1 @buildArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload installer (Actions artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SingLine-Studio-Setup
+          path: release/*.exe
+          compression-level: 0
+          retention-days: 14
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = Get-ChildItem release\*.exe | Select-Object -First 1
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "v$version-build.${{ github.run_number }}"
+          $gpu = if ("${{ github.event.inputs.gpu }}" -eq "true") { "NVIDIA GPU build" } else { "CPU build (works on every PC)" }
+          $notes = @"
+          Windows 10/11 installer for SingLine Studio $version.
+
+          - $gpu, speech model: $env:WHISPER_MODEL
+          - Works fully offline after installing.
+          - Windows may show "Windows protected your PC" because the installer is not code-signed: click **More info**, then **Run anyway**.
+
+          Built from commit ${{ github.sha }}.
+          "@
+          gh release create $tag $exe.FullName --title "SingLine Studio $version (build ${{ github.run_number }})" --notes $notes --latest

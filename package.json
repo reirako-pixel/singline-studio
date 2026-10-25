@@ -1,0 +1,63 @@
+{
+  "name": "singline-studio",
+  "productName": "SingLine Studio",
+  "version": "1.0.0",
+  "description": "Offline karaoke and lyric video maker: AI vocal removal, word-by-word lyric sync, 1080p MP4 export.",
+  "author": "SingLine Studio",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/run-tests.js",
+    "dist": "electron-builder --win --x64",
+    "dist:dir": "electron-builder --win --x64 --dir"
+  },
+  "dependencies": {
+    "fontkit": "^2.0.4"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "studio.singline.app",
+    "productName": "SingLine Studio",
+    "copyright": "SingLine Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "bin", "to": "bin", "filter": ["ffmpeg.exe", "ffprobe.exe"] },
+      { "from": "worker/dist/slworker", "to": "worker/slworker" },
+      { "from": "models", "to": "models" }
+    ],
+    "asar": true,
+    "compression": "normal",
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico",
+      "artifactName": "SingLine-Studio-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SingLine Studio",
+      "uninstallDisplayName": "SingLine Studio",
+      "deleteAppDataOnUninstall": false
+    },
+    "fileAssociations": [
+      { "ext": "singline", "name": "SingLine Project", "description": "SingLine Studio project" }
+    ]
+  }
+}
