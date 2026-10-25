@@ -285,7 +285,7 @@ def cmd_info(args, models):
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "whisperModel": args.whisper_model,
         "whisperReady": os.path.exists(whisper_path(models, args.whisper_model)),
-        "demucsReady": os.path.isdir(os.path.join(models, "torch", "hub", "checkpoints")),
+        "demucsReady": os.path.exists(os.path.join(models, "demucs", args.demucs_model + ".yaml")),
     }
     emit({"type": "result", **info})
 
@@ -298,7 +298,12 @@ def cmd_separate(args, models):
     from demucs.apply import apply_model
 
     device = pick_device(args.device)
-    model = get_model(args.demucs_model)
+    from pathlib import Path
+    repo = Path(models) / "demucs"
+    if not (repo / (args.demucs_model + ".yaml")).exists():
+        raise RuntimeError("The vocal separation model is missing (%s). Reinstall SingLine Studio or run "
+                           "worker/download_models.py." % repo)
+    model = get_model(args.demucs_model, repo=repo)  # local repo only, never the network
     model.eval()
     sr = model.samplerate
 

@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models
-          key: models-htdemucs-whisper-${{ env.WHISPER_MODEL }}-v1
+          key: models-demucs-local-whisper-${{ env.WHISPER_MODEL }}-v2
 
       - name: Cache pip downloads
         uses: actions/cache@v4

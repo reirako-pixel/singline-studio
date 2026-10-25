@@ -82,7 +82,7 @@ if (-not $SkipWorker) {
   Step "Testing the frozen AI engine"
   $info = (& worker\dist\slworker\slworker.exe info --models models --whisper-model $WhisperModel) | Out-String
   Write-Host $info
-  if ($info -notmatch '"whisperReady": true') { throw "The frozen engine cannot see the models." }
+  if ($info -notmatch '"whisperReady": true' -or $info -notmatch '"demucsReady": true') { throw "The frozen engine cannot see the models." }
 }
 
 # ---------------------------------------------------------------- ffmpeg
@@ -113,12 +113,12 @@ if ($LASTEXITCODE -ne 0) { throw "Tests failed" }
 
 Step "Building the installer"
 $env:CSC_IDENTITY_AUTO_DISCOVERY = "false"   # no code-signing certificate
-npx electron-builder --win --x64
+npx electron-builder --win --x64 --publish never
 if ($LASTEXITCODE -ne 0) {
   # Usually "Cannot create symbolic link" while unpacking the signing tools
   # (needs Developer Mode or admin). Build again without editing the exe.
   Write-Host "Retrying without exe signing/editing (the app still works; the .exe may show a default icon)" -ForegroundColor Yellow
-  npx electron-builder --win --x64 "-c.win.signAndEditExecutable=false"
+  npx electron-builder --win --x64 --publish never "-c.win.signAndEditExecutable=false"
   if ($LASTEXITCODE -ne 0) { throw "electron-builder failed" }
 }
 
