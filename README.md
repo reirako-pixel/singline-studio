@@ -9,6 +9,17 @@ no account, no credits.
 
 ## What it does
 
+Two ways to start:
+
+- **From a song**: upload the original song; the AI removes the vocals and
+  syncs your lyrics.
+- **Already have an instrumental or karaoke track?** Upload the instrumental,
+  title and lyrics, then a vocal file (an a-cappella/vocal stem, or the
+  original song) that the AI listens to for the timing. Or skip the AI and
+  time the words by hand.
+
+Features:
+
 - **AI vocal removal** with Demucs (htdemucs). Gives you the instrumental and
   the isolated vocals as WAV files too.
 - **Word-by-word lyric sync** with Whisper + stable-ts forced alignment. Paste

@@ -8,200 +8,29 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="app" class="app" hidden>
-  <header class="topbar">
-    <button class="brand" id="btnHome" title="Back to start">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="5" rx="2.5" class="b1"/><rect x="3" y="18" width="26" height="5" rx="2.5" class="b3"/><path d="M5.5 18H16v5H5.5a2.5 2.5 0 0 1 0-5z" class="b2"/></svg>
-      <span>SingLine Studio</span>
-    </button>
-    <nav class="steps" id="steps" aria-label="Steps">
-      <button data-step="song"><b>1</b>Song</button>
-      <button data-step="lyrics"><b>2</b>Lyrics</button>
-      <button data-step="sync"><b>3</b>Sync</button>
-      <button data-step="style"><b>4</b>Style</button>
-      <button data-step="export"><b>5</b>Export</button>
-    </nav>
-    <div class="top-actions">
-      <span class="save-state" id="saveState"></span>
-      <button class="icon-btn" id="btnSettings" title="Settings and AI engine">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.4 4.6-1.6-.4a7 7 0 0 1-.6 1.5l.9 1.4-1.8 1.8-1.4-.9c-.5.3-1 .5-1.5.6l-.4 1.6h-2.6l-.4-1.6c-.5-.1-1-.3-1.5-.6l-1.4.9-1.8-1.8.9-1.4c-.3-.5-.5-1-.6-1.5l-1.6-.4v-2.6l1.6-.4c.1-.5.3-1 .6-1.5l-.9-1.4 1.8-1.8 1.4.9c.5-.3 1-.5 1.5-.6l.4-1.6h2.6l.4 1.6c.5.1 1 .3 1.5.6l1.4-.9 1.8 1.8-.9 1.4c.3.5.5 1 .6 1.5l1.6.4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-  </header>
 
-  <main class="workspace">
-    <aside class="panel" id="panel">
-      <!-- 1. Song -->
-      <section data-panel="song">
-        <h2>Song</h2>
-        <div class="drop" id="dropSong">
-          <p class="drop-main" id="songName">Drop a song or music video here</p>
-          <p class="drop-sub" id="songMeta">MP3, WAV, FLAC, AAC, M4A, OGG, or an MP4/MKV/MOV music video</p>
-          <button class="btn" id="btnChooseSong">Choose a file</button>
-        </div>
-        <label class="field">Song title<input id="inTitle" type="text" placeholder="Midnight Drive"></label>
-        <label class="field">Artist<input id="inArtist" type="text" placeholder="Optional"></label>
-        <label class="field">Language of the lyrics
-          <select id="inLang"></select>
-        </label>
-        <p class="hint">The title and artist show on screen during the intro if you turn on the title card in Style.</p>
-        <div class="panel-foot"><button class="btn primary" data-goto="lyrics">Next: lyrics</button></div>
-      </section>
-
-      <!-- 2. Lyrics -->
-      <section data-panel="lyrics">
-        <h2>Lyrics</h2>
-        <p class="hint">Paste the lyrics, one sung line per row. Leave it empty and the AI writes them out from the song.</p>
-        <textarea id="inLyrics" spellcheck="false" placeholder="Every streetlight wrote our names in gold&#10;and the night kept singing back&#10;..."></textarea>
-        <div class="row">
-          <button class="btn ghost" id="btnLoadLyrics">Load a .txt or .lrc file</button>
-          <span class="count" id="lyricsCount"></span>
-        </div>
-        <div class="panel-foot">
-          <button class="btn primary big" id="btnProcess">Remove vocals and sync</button>
-          <p class="hint" id="processHint">Runs on this PC. A 4-minute song takes about 2–6 minutes on a typical CPU, faster with an NVIDIA GPU.</p>
-        </div>
-      </section>
-
-      <!-- 3. Sync -->
-      <section data-panel="sync">
-        <h2>Sync</h2>
-        <p class="hint">Click a line to jump to it. Double-click its text to fix a word. Drag words on the timeline below to line them up with the singing.</p>
-        <ol class="line-list" id="lineList"></ol>
-        <details class="keys">
-          <summary>Keyboard shortcuts</summary>
-          <dl>
-            <dt>Space</dt><dd>Play or pause</dd>
-            <dt>← →</dt><dd>Nudge selected word 10 ms (Shift: 100 ms)</dd>
-            <dt>Alt + ← →</dt><dd>Move just the end of the word</dd>
-            <dt>Ctrl + ← →</dt><dd>Move just the start of the word</dd>
-            <dt>Tab / Shift+Tab</dt><dd>Next / previous word</dd>
-            <dt>Ctrl + Z / Y</dt><dd>Undo / redo</dd>
-            <dt>Hold K</dt><dd>In hold-to-sync mode, hold while each word is sung</dd>
-          </dl>
-        </details>
-      </section>
-
-      <!-- 4. Style -->
-      <section data-panel="style">
-        <h2>Style</h2>
-        <div class="field">Layout
-          <div class="seg" id="segLayout">
-            <button data-v="karaoke">Karaoke</button><button data-v="single">Single line</button><button data-v="duet">Duet</button>
-          </div>
-        </div>
-        <div class="field">Position
-          <div class="seg" id="segPosition">
-            <button data-v="upper">Top</button><button data-v="center">Middle</button><button data-v="lower">Bottom</button>
-          </div>
-        </div>
-        <label class="field">Font
-          <input id="inFont" list="fontList" placeholder="Loading fonts…" autocomplete="off">
-          <datalist id="fontList"></datalist>
-        </label>
-        <label class="field">Text size <output id="outSize"></output>
-          <input id="inSize" type="range" min="40" max="140" step="1">
-        </label>
-        <div class="checks">
-          <label><input type="checkbox" id="inBold"> Bold</label>
-          <label><input type="checkbox" id="inShadow"> Shadow</label>
-          <label><input type="checkbox" id="inCountdown"> Countdown dots</label>
-          <label><input type="checkbox" id="inTitleCard"> Title card</label>
-        </div>
-        <div class="colors">
-          <label><input type="color" id="cText">Not sung yet</label>
-          <label><input type="color" id="cWipe">Sung</label>
-          <label><input type="color" id="cWipe2">Singer 2</label>
-          <label><input type="color" id="cWipe3">Both singers</label>
-          <label><input type="color" id="cOutline">Outline</label>
-        </div>
-        <label class="field">Outline width <output id="outOutline"></output>
-          <input id="inOutline" type="range" min="0" max="12" step="1">
-        </label>
-        <h3>Background</h3>
-        <div class="seg" id="segBg">
-          <button data-v="color">Color</button><button data-v="image">Image</button><button data-v="video">Video</button>
-        </div>
-        <div class="bg-opts">
-          <label class="inline"><input type="color" id="cBg"> Background color</label>
-          <div class="row" id="bgFileRow"><button class="btn ghost" id="btnBgFile">Choose a file</button><span class="file-name" id="bgFileName"></span></div>
-          <label class="field" id="dimField">Darken background <output id="outDim"></output>
-            <input id="inDim" type="range" min="0" max="0.8" step="0.05">
-          </label>
-        </div>
-      </section>
-
-      <!-- 5. Export -->
-      <section data-panel="export">
-        <h2>Export</h2>
-        <div class="field">Video type
-          <div class="choice" id="choiceType">
-            <button data-v="karaoke"><strong>Karaoke</strong><span>Vocals removed, for singing along</span></button>
-            <button data-v="lyric"><strong>Lyric video</strong><span>Original song with the words on screen</span></button>
-          </div>
-        </div>
-        <div class="field">Resolution
-          <div class="seg" id="segRes"><button data-v="1080">1080p</button><button data-v="720">720p</button></div>
-        </div>
-        <div class="panel-foot">
-          <button class="btn primary big" id="btnExport">Export MP4</button>
-          <p class="hint">H.264 MP4 that plays on YouTube, Facebook, TikTok, TVs and karaoke players.</p>
-        </div>
-        <div class="export-done" id="exportDone" hidden>
-          <p><strong>Exported.</strong> <span id="exportPath"></span></p>
-          <div class="row"><button class="btn" id="btnPlayExport">Play</button><button class="btn ghost" id="btnShowExport">Show in folder</button></div>
-        </div>
-        <h3>Audio files</h3>
-        <p class="hint">The separated instrumental and vocals are saved as WAV files in the project folder.</p>
-        <button class="btn ghost" id="btnStems">Open the stems folder</button>
-      </section>
-    </aside>
-
-    <section class="stage-wrap">
-      <div class="stage">
-        <canvas id="preview" width="1920" height="1080"></canvas>
-        <div class="stage-empty" id="stageEmpty">
-          <p>Choose a song to start.</p>
-        </div>
-      </div>
-      <div class="transport">
-        <button class="play" id="btnPlay" title="Play (Space)" aria-label="Play">
-          <svg viewBox="0 0 24 24" class="i-play"><path d="M8 5.5v13l11-6.5z"/></svg>
-          <svg viewBox="0 0 24 24" class="i-pause"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
-        </button>
-        <span class="time" id="timeNow">0:00.00</span>
-        <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Position">
-        <span class="time dim" id="timeDur">0:00</span>
-        <div class="monitor" id="monitor" title="What you hear while editing">
-          <button data-v="inst">Instrumental</button><button data-v="mix">With vocals</button>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="timeline-wrap">
-    <div class="tl-bar">
-      <span class="tl-title">Timeline</span>
-      <button class="icon-btn small" id="btnZoomOut" title="Zoom out (Ctrl + wheel)">−</button>
-      <button class="icon-btn small" id="btnZoomIn" title="Zoom in (Ctrl + wheel)">+</button>
-      <label class="tap"><input type="checkbox" id="inTap"> Hold-to-sync</label>
-      <span class="tl-hint" id="tlHint">Drag a word to move it, drag its edges to trim. Ctrl + wheel zooms.</span>
-    </div>
-    <canvas id="timeline"></canvas>
-  </footer>
-</div>
-
-<!-- Start screen -->
+<!-- ======================================================= start screen -->
 <div id="welcome" class="welcome">
   <div class="welcome-inner">
-    <div class="wordmark">
-      <p class="demo-line" aria-hidden="true"><span class="base">Turn any song into a sing-along</span><span class="wipe">Turn any song into a sing-along</span></p>
-      <h1>SingLine Studio</h1>
-      <p class="lede">Karaoke and lyric videos, made entirely on this PC. Removes the vocals, syncs every word, exports a 1080p MP4. No internet, no account, no credits.</p>
+    <p class="demo-line" aria-hidden="true"><span class="base">Turn any song into a sing-along</span><span class="wipe">Turn any song into a sing-along</span></p>
+    <h1>SingLine Studio</h1>
+    <p class="lede">Karaoke and lyric videos, made entirely on this PC. No internet, no account, no credits.</p>
+
+    <div class="paths">
+      <button class="path" id="btnNewSong">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+        <strong>Make a karaoke video from a song</strong>
+        <span>Upload the original song. The AI takes the vocals out and syncs every word of your lyrics.</span>
+      </button>
+      <button class="path" id="btnNewInst">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"/></svg>
+        <strong>Already have an instrumental or karaoke track?</strong>
+        <span>Upload your instrumental audio file and we'll help you create a karaoke video with synchronized lyrics.</span>
+      </button>
     </div>
-    <div class="welcome-actions">
-      <button class="btn primary big" id="btnNew">Make a new video</button>
-      <button class="btn ghost big" id="btnOpen">Open a project</button>
+
+    <div class="welcome-more">
+      <button class="btn ghost" id="btnOpen">Open a project</button>
     </div>
     <div class="recent" id="recentWrap" hidden>
       <h2>Recent projects</h2>
@@ -211,7 +40,334 @@
   <p class="welcome-foot" id="welcomeFoot"></p>
 </div>
 
-<!-- Progress -->
+<!-- ======================================================= setup wizard -->
+<div id="wizard" class="wizard" hidden>
+  <header class="wz-top">
+    <button class="btn ghost" id="wzBack">Back</button>
+    <ol class="wz-steps" id="wzSteps"></ol>
+    <span class="wz-spacer"></span>
+  </header>
+
+  <main class="wz-body">
+    <!-- page 1: song / instrumental + title + lyrics -->
+    <section class="wz-page" data-page="source">
+      <h2 id="srcHeading">Your instrumental and lyrics</h2>
+      <p class="wz-lede" id="srcLede">Upload your instrumental audio file, paste the lyrics and give it a title.</p>
+      <div class="wz-grid">
+        <div class="wz-col">
+          <div class="drop" id="dropSource" tabindex="0" role="button" aria-label="Choose an audio file">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <p class="drop-main" id="srcDropMain">Drop your instrumental here</p>
+            <p class="drop-sub" id="srcDropSub">MP3, WAV, FLAC, AAC, M4A, OGG, or a video file</p>
+            <span class="btn">Choose a file</span>
+          </div>
+          <div class="upload" id="srcUpload" hidden>
+            <div class="upload-row"><span class="upload-name" id="srcName"></span><span class="upload-pct" id="srcPct">0%</span></div>
+            <div class="bar"><div id="srcBar"></div></div>
+            <p class="upload-meta" id="srcMeta"></p>
+            <button class="link" id="srcReplace">Use a different file</button>
+          </div>
+          <label class="field">Title<input id="wzTitle" type="text" placeholder="Song title" autocomplete="off"></label>
+          <label class="field">Artist <span class="opt">optional</span><input id="wzArtist" type="text" autocomplete="off"></label>
+          <label class="field">Language of the lyrics<select id="wzLang"></select></label>
+        </div>
+        <div class="wz-col">
+          <label class="field grow">Lyrics
+            <textarea id="wzLyrics" spellcheck="false" placeholder="Paste the lyrics here, one sung line per row."></textarea>
+          </label>
+          <div class="row">
+            <button class="btn ghost" id="wzLoadLyrics">Load a .txt or .lrc file</button>
+            <span class="count" id="wzCount"></span>
+          </div>
+          <p class="hint" id="wzLyricsHint">Leave it empty and the AI writes the lyrics out from the singing.</p>
+        </div>
+      </div>
+      <div class="wz-foot">
+        <p class="wz-error" id="srcError"></p>
+        <button class="btn primary big" id="wzSaveContinue" disabled>Save and continue</button>
+      </div>
+    </section>
+
+    <!-- page 2 (instrumental flow): vocal file + sync -->
+    <section class="wz-page" data-page="vocals">
+      <h2>Upload the vocals to sync to</h2>
+      <p class="wz-lede">The AI listens to the singing to time every word. Use an a-cappella or vocal stem for the best result, or the original song. The vocals are only used for syncing; your karaoke video uses your instrumental.</p>
+      <div class="wz-narrow">
+        <div class="drop" id="dropVocals" tabindex="0" role="button" aria-label="Choose the vocal file">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          <p class="drop-main">Drop the vocal file here</p>
+          <p class="drop-sub">It should line up in time with your instrumental.</p>
+          <span class="btn">Choose a file</span>
+        </div>
+        <div class="upload" id="vocUpload" hidden>
+          <div class="upload-row"><span class="upload-name" id="vocName"></span><span class="upload-pct" id="vocPct">0%</span></div>
+          <div class="bar"><div id="vocBar"></div></div>
+          <p class="upload-meta" id="vocMeta"></p>
+          <button class="link" id="vocReplace">Use a different file</button>
+        </div>
+        <label class="check-card">
+          <input type="checkbox" id="vocFullSong">
+          <span><strong>This is the full original song, with music</strong>
+          The AI removes the music from it first, so the sync only hears the voice. Takes a few minutes longer.</span>
+        </label>
+      </div>
+      <div class="wz-foot">
+        <p class="wz-error" id="vocError"></p>
+        <button class="btn ghost" id="wzManual">Skip, I'll sync by hand</button>
+        <button class="btn primary big" id="wzSync" disabled>Sync lyrics</button>
+      </div>
+    </section>
+
+    <!-- page 3: AI progress -->
+    <section class="wz-page" data-page="work">
+      <div class="work">
+        <div class="work-wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <h2 id="workLabel">Syncing lyrics</h2>
+        <p class="work-msg" id="workMsg">Starting…</p>
+        <div class="bar big"><div id="workBar"></div></div>
+        <div class="row between"><span class="pct" id="workPct">0%</span><button class="btn ghost" id="workCancel">Cancel</button></div>
+        <p class="hint">Runs on this PC. A 4-minute song takes a few minutes on a typical CPU.</p>
+        <div class="work-error" id="workError" hidden>
+          <p id="workErrorMsg"></p>
+          <div class="row">
+            <button class="btn primary" id="workRetry">Try again</button>
+            <button class="btn ghost" id="workLog">Open the error log</button>
+            <button class="btn ghost" id="workManual">Continue and sync by hand</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ======================================================= editor -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="tb-left">
+      <button class="brand" id="btnHome" title="Back to the start screen">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="5" rx="2.5" class="b1"/><rect x="3" y="18" width="26" height="5" rx="2.5" class="b3"/><path d="M5.5 18H16v5H5.5a2.5 2.5 0 0 1 0-5z" class="b2"/></svg>
+      </button>
+      <span class="proj-title" id="projTitle">Untitled</span>
+    </div>
+    <div class="tb-right">
+      <span class="save-state" id="saveState"></span>
+      <div class="undo-group">
+        <button class="icon-btn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="icon-btn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+      </div>
+      <button class="icon-btn" id="btnSettings" title="App settings and AI engine" aria-label="App settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+      <button class="btn primary" id="btnExportOpen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>Export
+      </button>
+    </div>
+  </header>
+
+  <div class="editor">
+    <!-- icon rail -->
+    <nav class="rail" id="rail" aria-label="Settings sections">
+      <button data-sec="lyrics" title="Lyrics"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>
+      <button data-sec="aspect" title="Aspect ratio"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/></svg></button>
+      <button data-sec="layout" title="Layout"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="5" rx="1.5"/><rect x="4" y="14" width="16" height="5" rx="1.5"/></svg></button>
+      <button data-sec="text" title="Text style"><svg viewBox="0 0 24 24"><path d="M5 20 11 4h2l6 16M8 14h8"/></svg></button>
+      <button data-sec="background" title="Background"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></button>
+      <button data-sec="title" title="Title card"><svg viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M6 12h12"/></svg></button>
+      <button data-sec="cues" title="Cues and timers"><svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9"/></svg></button>
+      <button data-sec="audio" title="Audio"><svg viewBox="0 0 24 24"><path d="M3 12h3l2-5 3 10 3-14 3 13 2-4h2"/></svg></button>
+    </nav>
+
+    <!-- settings accordion -->
+    <aside class="settings" id="settingsPanel">
+      <h2 class="settings-h">Settings</h2>
+
+      <details class="sec" data-sec="lyrics" open>
+        <summary><span>Lyrics</span></summary>
+        <div class="sec-body">
+          <p class="hint">Click a line to jump to it. Double-click its text to fix a word. Drag the words on the timeline to line them up.</p>
+          <ol class="line-list" id="lineList"></ol>
+          <div class="row wrap">
+            <button class="btn ghost small" id="btnEditLyrics">Edit all lyrics</button>
+            <button class="btn ghost small" id="btnResync">Sync again with AI</button>
+          </div>
+          <div class="lyrics-edit" id="lyricsEdit" hidden>
+            <textarea id="edLyrics" spellcheck="false"></textarea>
+            <p class="hint">Saving re-syncs the lyrics to the vocals with the AI. Your manual timing changes will be replaced.</p>
+            <div class="row"><button class="btn primary small" id="btnLyricsSave">Save and sync</button><button class="btn ghost small" id="btnLyricsCancel">Cancel</button></div>
+          </div>
+          <details class="keys">
+            <summary>Keyboard shortcuts</summary>
+            <dl>
+              <dt>Space</dt><dd>Play or pause</dd>
+              <dt>← →</dt><dd>Nudge the selected word 10 ms (Shift: 100 ms)</dd>
+              <dt>Alt + ← →</dt><dd>Move only the end of the word</dd>
+              <dt>Ctrl + ← →</dt><dd>Move only the start of the word</dd>
+              <dt>Tab</dt><dd>Next word (Shift+Tab: previous)</dd>
+              <dt>Ctrl + Z / Y</dt><dd>Undo / redo</dd>
+              <dt>Hold K</dt><dd>Hold-to-sync: hold while each word is sung</dd>
+            </dl>
+          </details>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="aspect">
+        <summary><span>Aspect ratio</span></summary>
+        <div class="sec-body">
+          <div class="aspects" id="segAspect">
+            <button data-v="16:9"><i style="aspect-ratio:16/9"></i>16:9<small>YouTube, TV</small></button>
+            <button data-v="9:16"><i style="aspect-ratio:9/16"></i>9:16<small>TikTok, Reels</small></button>
+            <button data-v="1:1"><i style="aspect-ratio:1/1"></i>1:1<small>Square</small></button>
+            <button data-v="4:5"><i style="aspect-ratio:4/5"></i>4:5<small>Feed</small></button>
+          </div>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="layout">
+        <summary><span>Layout</span></summary>
+        <div class="sec-body">
+          <div class="field">Lyric layout
+            <div class="seg" id="segLayout"><button data-v="karaoke">Karaoke</button><button data-v="single">Single line</button><button data-v="duet">Duet</button></div>
+          </div>
+          <div class="field">Position
+            <div class="seg" id="segPosition"><button data-v="upper">Top</button><button data-v="center">Middle</button><button data-v="lower">Bottom</button></div>
+          </div>
+          <p class="hint">Duet puts singer 1 on the left and singer 2 on the right. Set who sings each line in Lyrics.</p>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="text">
+        <summary><span>Text style</span></summary>
+        <div class="sec-body">
+          <label class="field">Font
+            <input id="inFont" list="fontList" placeholder="Loading fonts…" autocomplete="off">
+            <datalist id="fontList"></datalist>
+          </label>
+          <label class="field">Text size <output id="outSize"></output>
+            <input id="inSize" type="range" min="40" max="140" step="1">
+          </label>
+          <div class="checks">
+            <label><input type="checkbox" id="inBold"> Bold</label>
+            <label><input type="checkbox" id="inShadow"> Shadow</label>
+          </div>
+          <div class="colors">
+            <label><input type="color" id="cText">Not sung yet</label>
+            <label><input type="color" id="cWipe">Sung</label>
+            <label><input type="color" id="cWipe2">Singer 2</label>
+            <label><input type="color" id="cWipe3">Both singers</label>
+            <label><input type="color" id="cOutline">Outline</label>
+          </div>
+          <label class="field">Outline width <output id="outOutline"></output>
+            <input id="inOutline" type="range" min="0" max="12" step="1">
+          </label>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="background">
+        <summary><span>Background</span></summary>
+        <div class="sec-body">
+          <div class="seg" id="segBg"><button data-v="color">Color</button><button data-v="image">Image</button><button data-v="video">Video</button></div>
+          <div class="bg-opts">
+            <label class="inline"><input type="color" id="cBg"> Background color</label>
+            <div class="row" id="bgFileRow"><button class="btn ghost small" id="btnBgFile">Choose a file</button><span class="file-name" id="bgFileName"></span></div>
+            <label class="field" id="dimField">Darken <output id="outDim"></output>
+              <input id="inDim" type="range" min="0" max="0.8" step="0.05">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="title">
+        <summary><span>Title card</span></summary>
+        <div class="sec-body">
+          <label class="inline"><input type="checkbox" id="inTitleCard"> Show the title and artist during the intro</label>
+          <label class="field">Title<input id="edTitle" type="text"></label>
+          <label class="field">Artist<input id="edArtist" type="text"></label>
+          <p class="hint">It only appears when the intro is long enough, and is gone before the first countdown.</p>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="cues">
+        <summary><span>Cues and timers</span></summary>
+        <div class="sec-body">
+          <label class="inline"><input type="checkbox" id="inCountdown"> Countdown dots before each verse</label>
+          <p class="hint">Three dots appear before the first line and after every long instrumental break, and go out one per second.</p>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="audio">
+        <summary><span>Audio</span></summary>
+        <div class="sec-body">
+          <div class="field">Listen to
+            <div class="seg" id="monitor"><button data-v="inst">Instrumental</button><button data-v="mix">With vocals</button></div>
+          </div>
+          <p class="hint" id="audioInfo"></p>
+          <button class="btn ghost small" id="btnStems">Open the audio folder</button>
+        </div>
+      </details>
+    </aside>
+
+    <!-- preview -->
+    <section class="stage-wrap">
+      <div class="stage" id="stage">
+        <canvas id="preview" width="1920" height="1080"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <!-- transport + timeline -->
+  <footer class="dock">
+    <div class="transport">
+      <div class="tp-left">
+        <button class="icon-btn" id="btnZoomOut" title="Zoom out the timeline" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <span class="zoom-val" id="zoomVal">1×</span>
+        <button class="icon-btn" id="btnZoomIn" title="Zoom in the timeline" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <label class="tap" title="Play, then hold K while each word is sung"><input type="checkbox" id="inTap"> Hold-to-sync</label>
+      </div>
+      <div class="tp-mid">
+        <button class="icon-btn" id="btnToStart" title="Back to the start" aria-label="Back to the start"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button>
+        <button class="play" id="btnPlay" title="Play (Space)" aria-label="Play">
+          <svg viewBox="0 0 24 24" class="i-play"><path d="M8 5.5v13l11-6.5z"/></svg>
+          <svg viewBox="0 0 24 24" class="i-pause"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        </button>
+        <button class="speed" id="btnSpeed" title="Playback speed">1×</button>
+        <svg class="vol-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>
+        <input type="range" id="inVol" min="0" max="1" step="0.01" value="0.9" aria-label="Volume">
+        <span class="time"><span id="timeNow">0:00.00</span> / <span id="timeDur">0:00</span></span>
+      </div>
+      <div class="tp-right">
+        <input type="range" id="inZoom" min="0" max="100" step="1" value="40" aria-label="Timeline zoom">
+      </div>
+    </div>
+    <canvas id="timeline"></canvas>
+  </footer>
+</div>
+
+<!-- ======================================================= export -->
+<div class="modal" id="exportSheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="exLabel">
+    <h2 id="exLabel">Export video</h2>
+    <div class="field">Video type
+      <div class="choice" id="choiceType">
+        <button data-v="karaoke"><strong>Karaoke</strong><span>Instrumental only, for singing along</span></button>
+        <button data-v="lyric"><strong>Lyric video</strong><span>With the vocals, words on screen</span></button>
+      </div>
+    </div>
+    <div class="field">Resolution
+      <div class="seg" id="segRes"><button data-v="1080">1080p</button><button data-v="720">720p</button></div>
+    </div>
+    <p class="hint" id="exSummary"></p>
+    <div class="export-done" id="exportDone" hidden>
+      <p><strong>Exported.</strong> <span id="exportPath"></span></p>
+      <div class="row"><button class="btn" id="btnPlayExport">Play</button><button class="btn ghost" id="btnShowExport">Show in folder</button></div>
+    </div>
+    <div class="row between">
+      <button class="btn ghost" id="btnExportClose">Close</button>
+      <button class="btn primary big" id="btnExport">Export MP4</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================= progress (editor jobs) -->
 <div class="modal" id="busy" hidden>
   <div class="sheet busy-sheet" role="dialog" aria-modal="true" aria-labelledby="busyLabel">
     <h2 id="busyLabel">Working</h2>
@@ -221,10 +377,10 @@
   </div>
 </div>
 
-<!-- Settings -->
+<!-- ======================================================= app settings -->
 <div class="modal" id="settings" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="setLabel">
-    <h2 id="setLabel">Settings</h2>
+    <h2 id="setLabel">App settings</h2>
     <label class="field">Run the AI on
       <select id="inDevice">
         <option value="auto">Automatic (NVIDIA GPU if available)</option>
@@ -234,8 +390,8 @@
     </label>
     <h3>AI engine</h3>
     <p class="engine" id="engineInfo">Not checked yet.</p>
-    <div class="row between"><button class="btn ghost" id="btnCheckEngine">Check AI engine</button><button class="btn primary" id="btnCloseSettings">Done</button></div>
-    <p class="hint" id="aboutLine"></p>
+    <div class="row wrap"><button class="btn ghost" id="btnCheckEngine">Check AI engine</button><button class="btn ghost" id="btnOpenLogs">Open logs folder</button></div>
+    <div class="row between"><p class="hint" id="aboutLine"></p><button class="btn primary" id="btnCloseSettings">Done</button></div>
   </div>
 </div>
 

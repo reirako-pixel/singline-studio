@@ -6,11 +6,21 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.SLLayout = api;
 })(typeof self !== 'undefined' ? self : this, function (L) {
+  // Default frame (16:9). Other aspect ratios keep the short side at 1080 so
+  // text sizes mean the same thing in every shape.
   const W = 1920;
   const H = 1080;
   const FADE = 0.15;
+  const ASPECTS = {
+    '16:9': [1920, 1080],
+    '9:16': [1080, 1920],
+    '1:1': [1080, 1080],
+    '4:5': [1080, 1350],
+  };
+  function dims(aspect) { return ASPECTS[aspect] || ASPECTS['16:9']; }
 
   const DEFAULT_STYLE = {
+    aspect: '16:9',             // 16:9 | 9:16 | 1:1 | 4:5
     layout: 'karaoke',          // karaoke | single | duet
     position: 'lower',          // lower | center | upper
     font: { family: 'Segoe UI', path: '' },
@@ -39,16 +49,41 @@
     return singer === 2 ? style.wipeColor2 : singer === 3 ? style.wipeColor3 : style.wipeColor;
   }
 
-  function anchorY(style) {
+  function anchorY(style, H) {
     return style.position === 'center' ? H * 0.5 : style.position === 'upper' ? H * 0.27 : H * 0.76;
   }
 
+  const maxWidth = (W, align) => W * (align === 'center' ? 0.88 : 0.8);
+
+  // Split lyric lines that would have to shrink a lot (long lines in a narrow
+  // portrait frame) into two shorter lines at the word boundary nearest the
+  // middle. Each part keeps its own word timings, so the wipe is unchanged.
+  function splitLong(lines, style, measure, W) {
+    const out = [];
+    const limit = maxWidth(W, 'center') / 0.72;
+    for (const line of lines) {
+      const { text } = L.joinWords(line.words);
+      if (line.words.length < 2 || measure(text, style.fontSize, style.bold) <= limit) { out.push(line); continue; }
+      const total = measure(text, style.fontSize, style.bold);
+      let best = 1;
+      let bestD = Infinity;
+      for (let k = 1; k < line.words.length; k++) {
+        const d = Math.abs(measure(L.joinWords(line.words.slice(0, k)).text, style.fontSize, style.bold) - total / 2);
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      const a = { ...line, words: line.words.slice(0, best), part: 1 };
+      const b = { ...line, words: line.words.slice(best), part: 2 };
+      out.push(...splitLong([a], style, measure, W), ...splitLong([b], style, measure, W));
+    }
+    return out;
+  }
+
   // measure(text, px, bold) -> width in px. Provided by the caller (canvas).
-  function placeLine(line, style, measure, y, align) {
+  function placeLine(line, style, measure, y, align, W) {
     const { text, prefixes } = L.joinWords(line.words);
     const px = style.fontSize;
     const full = measure(text, px, style.bold) || 1;
-    const maxW = W * (align === 'center' ? 0.88 : 0.8);
+    const maxW = maxWidth(W, align);
     const scale = Math.min(1, maxW / full);
     const width = full * scale;
     const margin = W * 0.08;
@@ -63,12 +98,13 @@
 
   function buildScene(project, measure) {
     const style = withDefaults(project.style);
-    const lines = (project.lines || []).filter((l) => l.words && l.words.length);
+    const [W, H] = dims(style.aspect);
+    const lines = splitLong((project.lines || []).filter((l) => l.words && l.words.length), style, measure, W);
     const items = [];
     const n = lines.length;
     const starts = lines.map(L.lineStart);
     const ends = lines.map(L.lineEnd);
-    const ay = anchorY(style);
+    const ay = anchorY(style, H);
     const gap = style.fontSize * 1.55;
     const twoRow = style.layout !== 'single';
 
@@ -105,7 +141,7 @@
         const sg = lines[i].singer || 1;
         align = sg === 1 ? 'left' : sg === 2 ? 'right' : 'center';
       }
-      const p = placeLine(lines[i], style, measure, y, align);
+      const p = placeLine(lines[i], style, measure, y, align, W);
       items.push({ kind: 'line', index: i, appear: appear[i], hide: hide[i], slot, align, fill: fillFor(style, p.singer), ...p });
     }
 
@@ -149,5 +185,5 @@
     return w;
   }
 
-  return { W, H, FADE, DEFAULT_STYLE, withDefaults, buildScene, alphaAt, sungWidth, fillFor };
+  return { W, H, FADE, ASPECTS, dims, DEFAULT_STYLE, withDefaults, buildScene, alphaAt, sungWidth, fillFor };
 });

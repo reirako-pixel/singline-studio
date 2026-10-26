@@ -102,6 +102,23 @@ if (-not (Test-Path "bin\ffmpeg.exe")) {
 $filters = & bin\ffmpeg.exe -hide_banner -filters 2>$null | Out-String
 if ($filters -notmatch '\ssubtitles\s') { throw "This ffmpeg has no libass support." }
 
+# ---------------------------------------------------------------- end-to-end check
+# Run the real AI steps through the frozen engine on a short song, exactly as
+# the installed app does. A packaging problem fails the build here instead of
+# on the user's PC.
+Step "Checking vocal removal and lyric sync in the frozen engine"
+$e2e = Join-Path $env:TEMP "singline-e2e"
+if (Test-Path $e2e) { Remove-Item $e2e -Recurse -Force }
+$eng = "worker\dist\slworker\slworker.exe"
+$common = @("--models", "models", "--ffmpeg", (Resolve-Path bin\ffmpeg.exe).Path, "--whisper-model", $WhisperModel)
+$sep = (& $eng separate @common --input test\fixtures\e2e-song.mp3 --outdir $e2e) | Out-String
+Write-Host ($sep.Trim() -split "`n" | Select-Object -Last 1)
+if ($sep -notmatch '"type": "result"') { throw "Vocal removal failed in the frozen engine." }
+$ali = (& $eng align @common --audio "$e2e\vocals.wav" --lyrics test\fixtures\e2e-lyrics.txt --lang en) | Out-String
+$last = ($ali.Trim() -split "`n" | Select-Object -Last 1)
+Write-Host $last.Substring(0, [Math]::Min(300, $last.Length))
+if ($ali -notmatch '"type": "result"' -or $ali -notmatch 'streetlight') { throw "Lyric sync failed in the frozen engine." }
+
 # ---------------------------------------------------------------- app
 Step "Installing app dependencies"
 if (Test-Path package-lock.json) { npm ci } else { npm install }

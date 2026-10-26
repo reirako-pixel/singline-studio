@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('sl', {
   process: (opts) => ipcRenderer.invoke('ai:process', opts),
   align: (opts) => ipcRenderer.invoke('ai:align', opts),
   transcribe: (opts) => ipcRenderer.invoke('ai:transcribe', opts),
+  syncVocals: (opts) => ipcRenderer.invoke('ai:sync-vocals', opts),
+  openLogs: () => ipcRenderer.invoke('logs:open'),
   aiInfo: () => ipcRenderer.invoke('ai:info'),
   cancelJob: () => ipcRenderer.invoke('job:cancel'),
   onProgress: (fn) => {
@@ -18,6 +20,12 @@ contextBridge.exposeInMainWorld('sl', {
   exportVideo: (opts) => ipcRenderer.invoke('export:video', opts),
   peaks: (file) => ipcRenderer.invoke('audio:peaks', file),
   probe: (file) => ipcRenderer.invoke('media:probe', file),
+  importMedia: (opts) => ipcRenderer.invoke('media:import', opts),
+  onImportProgress: (fn) => {
+    const h = (_e, p) => fn(p);
+    ipcRenderer.on('import:progress', h);
+    return () => ipcRenderer.removeListener('import:progress', h);
+  },
   fonts: () => ipcRenderer.invoke('fonts:list'),
   // projects
   newProjectDir: (title) => ipcRenderer.invoke('project:new-dir', title),

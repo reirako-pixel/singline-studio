@@ -1,7 +1,7 @@
 // Canvas renderer for the live preview. Draws the same scene the ASS export
 // uses, with matching font metrics, outline, shadow and wipe.
 (function (root) {
-  const { W, H, alphaAt, sungWidth } = root.SLLayout;
+  const { alphaAt, sungWidth } = root.SLLayout;
 
   function fontCss(style, px, cssFamily, boldOverride) {
     const bold = boldOverride === undefined ? style.bold : boldOverride;
@@ -25,7 +25,7 @@
     };
   }
 
-  function cover(ctx, media, mw, mh) {
+  function cover(ctx, media, mw, mh, W, H) {
     if (!mw || !mh) return;
     const s = Math.max(W / mw, H / mh);
     const dw = mw * s;
@@ -33,14 +33,14 @@
     ctx.drawImage(media, (W - dw) / 2, (H - dh) / 2, dw, dh);
   }
 
-  function drawBackground(ctx, style, media) {
+  function drawBackground(ctx, style, media, W, H) {
     const bg = style.bg;
     ctx.fillStyle = bg.color || '#000';
     ctx.fillRect(0, 0, W, H);
     if (bg.type === 'image' && media.image && media.image.complete) {
-      cover(ctx, media.image, media.image.naturalWidth, media.image.naturalHeight);
+      cover(ctx, media.image, media.image.naturalWidth, media.image.naturalHeight, W, H);
     } else if (bg.type === 'video' && media.video && media.video.readyState >= 2) {
-      cover(ctx, media.video, media.video.videoWidth, media.video.videoHeight);
+      cover(ctx, media.video, media.video.videoWidth, media.video.videoHeight, W, H);
     }
     if (bg.type !== 'color' && bg.dim > 0) {
       ctx.fillStyle = `rgba(0,0,0,${bg.dim})`;
@@ -146,8 +146,9 @@
   function drawFrame(ctx, scene, t, media, cssFamily) {
     const cw = ctx.canvas.width;
     const ch = ctx.canvas.height;
+    const { W, H } = scene;
     ctx.setTransform(cw / W, 0, 0, ch / H, 0, 0);
-    drawBackground(ctx, scene.style, media || {});
+    drawBackground(ctx, scene.style, media || {}, W, H);
     for (const it of scene.items) {
       if (it.kind === 'title') drawTitle(ctx, it, scene.style, t, cssFamily);
       else if (it.kind === 'countdown') drawCountdown(ctx, it, t);

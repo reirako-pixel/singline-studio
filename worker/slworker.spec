@@ -8,7 +8,13 @@ datas = (
     + collect_data_files("stable_whisper")
     + collect_data_files("demucs")         # model yaml definitions
 )
-hiddenimports = collect_submodules("demucs") + collect_submodules("stable_whisper") + ["soundfile"]
+hiddenimports = (
+    collect_submodules("demucs") + collect_submodules("stable_whisper") + ["soundfile"]
+    # The Demucs checkpoint is a pickle that names numpy.core.multiarray (the
+    # numpy 1.x layout). numpy 2 keeps numpy.core only as a shim that nothing
+    # imports directly, so PyInstaller leaves it out unless told to.
+    + collect_submodules("numpy.core") + collect_submodules("numpy._core")
+)
 
 a = Analysis(
     ["worker.py"],

@@ -130,6 +130,32 @@ test('ASS escapes braces and backslashes in lyrics', () => {
   assert.ok(ev.includes('(oops)') && ev.includes('a/Nb'));
 });
 
+test('aspect ratios set the frame size', () => {
+  const s1 = Lay.buildScene({ lines: timed(), style: { aspect: '9:16' } }, measure);
+  assert.deepStrictEqual([s1.W, s1.H], [1080, 1920]);
+  const s2 = Lay.buildScene({ lines: timed(), style: { aspect: '1:1' } }, measure);
+  assert.deepStrictEqual([s2.W, s2.H], [1080, 1080]);
+  const ass = Ass.buildAss(s1);
+  assert.ok(ass.includes('PlayResX: 1080') && ass.includes('PlayResY: 1920'));
+  for (const it of s1.items.filter((i) => i.kind === 'line')) assert.ok(it.left >= 0 && it.left + it.width <= 1080 + 1e-6);
+});
+
+test('long lines split in a narrow frame, keeping every word and its timing', () => {
+  const words = L.tokenize('this is a fairly long karaoke line that will not fit on a phone screen at all')
+    .map((t, i) => ({ text: t, start: 2 + i * 0.3, end: 2.25 + i * 0.3 }));
+  const s = Lay.buildScene({ lines: [{ singer: 1, words }], style: { aspect: '9:16' } }, measure);
+  const lines = s.items.filter((i) => i.kind === 'line');
+  assert.ok(lines.length >= 2, 'expected the line to be split');
+  const all = lines.flatMap((l) => l.words.map((w) => w.text + '@' + w.start));
+  assert.deepStrictEqual(all, words.map((w) => w.text + '@' + w.start));
+  for (const l of lines) assert.ok(l.scale >= 0.72 - 1e-9, 'parts should not need heavy shrinking');
+});
+
+test('16:9 keeps a normal line whole', () => {
+  const s = Lay.buildScene({ lines: timed(), style: {} }, measure);
+  assert.strictEqual(s.items.filter((i) => i.kind === 'line').length, 4);
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);
 
 // Optional: render a short clip to eyeball the karaoke output.

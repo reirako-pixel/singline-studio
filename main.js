@@ -112,6 +112,21 @@ function sendProgress(payload) {
   if (win) win.webContents.send('job:progress', payload);
 }
 
+// Every engine run writes its full output to a log file, so a failure on
+// someone's PC can be diagnosed from the file instead of a short message.
+const logsDir = () => path.join(app.getPath('userData'), 'logs');
+function openJobLog(command) {
+  fs.mkdirSync(logsDir(), { recursive: true });
+  // keep the newest 30 logs
+  try {
+    const old = fs.readdirSync(logsDir()).filter((f) => f.endsWith('.log')).sort().slice(0, -29);
+    old.forEach((f) => fs.rmSync(path.join(logsDir(), f), { force: true }));
+  } catch { /* not critical */ }
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = path.join(logsDir(), `${stamp}-${command}.log`);
+  return { file, stream: fs.createWriteStream(file, { flags: 'a' }) };
+}
+
 // Run one worker command; resolves with its "result" message.
 function runWorker(command, args, { lo = 0, hi = 100, label = '' } = {}) {
   return new Promise((resolve, reject) => {
@@ -135,12 +150,15 @@ function runWorker(command, args, { lo = 0, hi = 100, label = '' } = {}) {
     }
     const job = { proc, kind: command };
     currentJob = job;
+    const log = openJobLog(command);
+    log.stream.write(`$ ${cmd} ${[...pre, ...fullArgs.slice(pre.length)].map((a) => JSON.stringify(a)).join(' ')}\n\n`);
     let buf = '';
     let result = null;
     let errorMsg = null;
     let stderrTail = '';
 
     proc.stdout.on('data', (chunk) => {
+      log.stream.write(chunk);
       buf += chunk.toString('utf8');
       let i;
       while ((i = buf.indexOf('\n')) >= 0) {
@@ -158,19 +176,23 @@ function runWorker(command, args, { lo = 0, hi = 100, label = '' } = {}) {
         }
       }
     });
-    proc.stderr.on('data', (c) => { stderrTail = (stderrTail + c.toString('utf8')).slice(-3000); });
+    proc.stderr.on('data', (c) => { log.stream.write(c); stderrTail = (stderrTail + c.toString('utf8')).slice(-3000); });
     proc.on('error', (e) => {
       if (currentJob === job) currentJob = null;
-      reject(new Error(e.code === 'ENOENT'
+      log.stream.end(`\n[spawn error] ${e.message}\n`);
+      reject(Object.assign(new Error(e.code === 'ENOENT'
         ? 'The AI engine was not found. Reinstall SingLine Studio, or in development build the worker (see README).'
-        : e.message));
+        : e.message), { log: log.file }));
     });
     proc.on('close', (code) => {
       if (currentJob === job) currentJob = null;
+      log.stream.end(`\n[exit code ${code}${job.cancelled ? ', cancelled' : ''}]\n`);
       if (job.cancelled) return reject(Object.assign(new Error('Cancelled'), { cancelled: true }));
       if (result && code === 0) return resolve(result);
       const tail = stderrTail.trim().split('\n').slice(-4).join('\n');
-      reject(new Error(errorMsg || ('The AI engine stopped unexpectedly (code ' + code + ').\n' + tail)));
+      const err = new Error(errorMsg || ('The AI engine stopped unexpectedly (code ' + code + ').\n' + tail));
+      err.log = log.file;
+      reject(err);
     });
   });
 }
@@ -181,8 +203,21 @@ function writeLyricsFile(dir, lines) {
   return p;
 }
 
+// Errors thrown in handlers reach the UI as plain messages; append the log
+// file path in a form the UI can pick out ("[log:<path>]").
+function withLog(fn) {
+  return async (...a) => {
+    try { return await fn(...a); } catch (e) {
+      if (e && e.log && !e.cancelled) throw new Error(e.message + ' [log:' + e.log + ']');
+      throw e;
+    }
+  };
+}
+
+ipcMain.handle('logs:open', () => { fs.mkdirSync(logsDir(), { recursive: true }); return shell.openPath(logsDir()); });
+
 // Full pipeline: separate vocals, then sync the lyrics (or transcribe them).
-ipcMain.handle('ai:process', async (_e, { projectDir, input, lyrics, lang }) => {
+ipcMain.handle('ai:process', withLog(async (_e, { projectDir, input, lyrics, lang }) => {
   const stemsDir = path.join(projectDir, 'stems');
   fs.mkdirSync(stemsDir, { recursive: true });
   const sep = await runWorker('separate', ['--input', input, '--outdir', stemsDir],
@@ -195,19 +230,92 @@ ipcMain.handle('ai:process', async (_e, { projectDir, input, lyrics, lang }) => 
       { lo: 62, hi: 100, label: 'Writing out lyrics' });
   return { stems: { vocals: sep.vocals, instrumental: sep.instrumental, mix: sep.mix }, duration: sep.duration,
     device: sep.device, language: sync.language, lines: sync.lines };
-});
+}));
+
+// "Already have an instrumental": the user brings the instrumental and a vocal
+// file. The vocal file is either clean vocals (a-cappella / vocal stem) or the
+// original song; for the original song the music is removed first so the
+// aligner hears only the voice. Nothing here touches the instrumental.
+ipcMain.handle('ai:sync-vocals', withLog(async (_e, { projectDir, instrumental, vocalFile, isFullSong, lyrics, lang }) => {
+  const stemsDir = path.join(projectDir, 'stems');
+  fs.mkdirSync(stemsDir, { recursive: true });
+  let vocals = vocalFile;
+  let mix;
+  let lo = 0;
+  if (isFullSong) {
+    const sep = await runWorker('separate', ['--input', vocalFile, '--outdir', stemsDir],
+      { lo: 0, hi: 62, label: 'Removing the music from the vocal file' });
+    vocals = sep.vocals;
+    mix = sep.mix;
+    lo = 62;
+  } else {
+    // "With vocals" preview and lyric-video export: instrumental + vocals mixed
+    sendProgress({ pct: 0, msg: 'Preparing the audio', label: 'Syncing lyrics' });
+    mix = path.join(stemsDir, 'mix.wav');
+    await runFfmpeg(['-y', '-v', 'error', '-i', instrumental, '-i', vocalFile,
+      '-filter_complex', 'amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97', '-ac', '2', '-ar', '44100', mix]);
+    lo = 6;
+  }
+  const hasLyrics = lyrics && lyrics.some((l) => l.trim());
+  const sync = hasLyrics
+    ? await runWorker('align', ['--audio', vocals, '--lyrics', writeLyricsFile(projectDir, lyrics), '--lang', lang || 'auto'],
+      { lo, hi: 100, label: 'Syncing lyrics' })
+    : await runWorker('transcribe', ['--audio', vocals, '--lang', lang || 'auto'],
+      { lo, hi: 100, label: 'Writing out lyrics' });
+  return { stems: { vocals, instrumental, mix }, language: sync.language, lines: sync.lines };
+}));
 
 // Re-sync only (lyrics changed, stems already exist).
-ipcMain.handle('ai:align', async (_e, { projectDir, vocals, lyrics, lang }) => {
+ipcMain.handle('ai:align', withLog(async (_e, { projectDir, vocals, lyrics, lang }) => {
   const res = await runWorker('align', ['--audio', vocals, '--lyrics', writeLyricsFile(projectDir, lyrics), '--lang', lang || 'auto'],
     { lo: 0, hi: 100, label: 'Syncing lyrics' });
   return { language: res.language, lines: res.lines };
-});
+}));
 
-ipcMain.handle('ai:transcribe', async (_e, { vocals, lang }) => {
+ipcMain.handle('ai:transcribe', withLog(async (_e, { vocals, lang }) => {
   const res = await runWorker('transcribe', ['--audio', vocals, '--lang', lang || 'auto'],
     { lo: 0, hi: 100, label: 'Writing out lyrics' });
   return { language: res.language, lines: res.lines };
+}));
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath(), args, { windowsHide: true });
+    let err = '';
+    proc.stderr.on('data', (c) => { err = (err + c.toString()).slice(-1500); });
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error('ffmpeg failed: ' + err.trim().split('\n').pop()))));
+  });
+}
+
+// Copy a file into the project folder with progress, so the project keeps
+// working even if the original is moved or deleted.
+ipcMain.handle('media:import', async (_e, { src, projectDir, sub = 'media', name }) => {
+  const dir = path.join(projectDir, sub);
+  fs.mkdirSync(dir, { recursive: true });
+  const ext = path.extname(src);
+  const base = (name ? safeName(name) : path.basename(src, ext)) + ext.toLowerCase();
+  const dst = path.join(dir, base);
+  if (path.resolve(src) === path.resolve(dst)) return dst;
+  const total = fs.statSync(src).size || 1;
+  await new Promise((resolve, reject) => {
+    let done = 0;
+    let last = 0;
+    const rs = fs.createReadStream(src, { highWaterMark: 1 << 20 });
+    const ws = fs.createWriteStream(dst + '.part');
+    rs.on('data', (c) => {
+      done += c.length;
+      const now = Date.now();
+      if (now - last > 80) { last = now; if (win) win.webContents.send('import:progress', { pct: (done / total) * 100 }); }
+    });
+    rs.on('error', reject);
+    ws.on('error', reject);
+    ws.on('finish', resolve);
+    rs.pipe(ws);
+  });
+  fs.renameSync(dst + '.part', dst);
+  if (win) win.webContents.send('import:progress', { pct: 100 });
+  return dst;
 });
 
 ipcMain.handle('ai:info', async () => {
@@ -222,9 +330,10 @@ ipcMain.handle('job:cancel', () => { killJob(); return true; });
 function hexToFfmpeg(hex) { return '0x' + String(hex || '#000000').replace('#', '').slice(0, 6); }
 
 ipcMain.handle('export:video', async (_e, opts) => {
-  const { ass, fontPaths = [], background, audioPath, duration, outPath, height = 1080, fps = 30 } = opts;
-  const W = height === 720 ? 1280 : 1920;
-  const H = height === 720 ? 720 : 1080;
+  const { ass, fontPaths = [], background, audioPath, duration, outPath, width = 1920, height = 1080, fps = 30 } = opts;
+  // even dimensions for H.264
+  const W = Math.round(width / 2) * 2;
+  const H = Math.round(height / 2) * 2;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'singline-'));
   const fontsDir = path.join(tmp, 'fonts');
   fs.mkdirSync(fontsDir);
@@ -448,7 +557,20 @@ const FILTERS = {
   lyrics: [{ name: 'Lyrics', extensions: ['txt', 'lrc'] }],
 };
 
+// Automated UI tests set SINGLINE_TEST_PICKS to a JSON file holding a list of
+// paths; each file dialog then returns the next one instead of opening.
+function testPick() {
+  const f = process.env.SINGLINE_TEST_PICKS;
+  if (!f || !fs.existsSync(f)) return undefined;
+  const list = JSON.parse(fs.readFileSync(f, 'utf8'));
+  const next = list.shift();
+  fs.writeFileSync(f, JSON.stringify(list));
+  return next === undefined ? null : next;
+}
+
 ipcMain.handle('dialog:open', async (_e, kind) => {
+  const picked = testPick();
+  if (picked !== undefined) return picked;
   const r = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
     filters: FILTERS[kind] || [],
@@ -458,6 +580,8 @@ ipcMain.handle('dialog:open', async (_e, kind) => {
 });
 
 ipcMain.handle('dialog:save-video', async (_e, suggested) => {
+  const picked = testPick();
+  if (picked !== undefined) return picked;
   const r = await dialog.showSaveDialog(win, {
     defaultPath: path.join(app.getPath('videos'), safeName(suggested) + '.mp4'),
     filters: [{ name: 'MP4 video', extensions: ['mp4'] }],

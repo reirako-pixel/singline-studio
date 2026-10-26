@@ -2,9 +2,12 @@
 // its edges to trim, wheel to scroll, Ctrl+wheel to zoom, click to seek.
 (function (root) {
   const RULER = 22;
-  const WAVE = 74;
-  const WORDS = 42;
+  const WAVE = 64;
+  const WORDS = 40;
+  const BGT = 26;      // background track
   const EDGE = 6;
+  const MINPPS = 15;
+  const MAXPPS = 900;
 
   class Timeline {
     constructor(canvas, cb) {
@@ -39,6 +42,7 @@
         bg: v('--tl-bg', '#181b35'), grid: v('--line', '#363c6b'), text: v('--muted', '#a8acd6'),
         wave: v('--tl-wave', '#4a5190'), word: v('--tl-word', '#2f356a'), wordText: v('--ink', '#eef0ff'),
         sel: v('--cyan', '#5fd4e0'), head: v('--amber', '#ffc24b'), sung: v('--tl-sung', '#5a4a2a'),
+        bgTrack: v('--tl-bgtrack', '#3b2f5e'),
       };
     }
 
@@ -46,7 +50,7 @@
       const r = this.cv.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       this.w = Math.max(100, r.width);
-      this.h = RULER + WAVE + WORDS + 8;
+      this.h = RULER + WAVE + WORDS + BGT + 10;
       this.cv.style.height = this.h + 'px';
       this.cv.width = Math.round(this.w * dpr);
       this.cv.height = Math.round(this.h * dpr);
@@ -77,13 +81,22 @@
       this.draw();
     }
 
-    zoom(f, atX) {
-      const t = this.xt(atX === undefined ? this.w / 2 : atX);
-      this.pps = Math.max(15, Math.min(900, this.pps * f));
-      this.x0 = t - (atX === undefined ? this.w / 2 : atX) / this.pps;
+    zoom(f, atX) { this.setPps(this.pps * f, atX); }
+
+    setPps(pps, atX) {
+      const ax = atX === undefined ? this.tx(this.cb.getTime()) : atX;
+      const anchor = ax >= 0 && ax <= this.w ? ax : this.w / 2;
+      const t = this.xt(anchor);
+      this.pps = Math.max(MINPPS, Math.min(MAXPPS, pps));
+      this.x0 = t - anchor / this.pps;
       this.clampView();
       this.draw();
+      if (this.cb.onZoom) this.cb.onZoom(this.zoomFrac());
     }
+
+    // 0..1 on a log scale, for the zoom slider
+    zoomFrac() { return Math.log(this.pps / MINPPS) / Math.log(MAXPPS / MINPPS); }
+    setZoomFrac(f) { this.setPps(MINPPS * Math.pow(MAXPPS / MINPPS, Math.max(0, Math.min(1, f)))); }
 
     // ---------- hit testing ----------
     hit(e) {
@@ -91,7 +104,7 @@
       const x = e.clientX - r.left;
       const y = e.clientY - r.top;
       const t = this.xt(x);
-      if (y < RULER + WAVE) return { t, x, y, area: 'wave' };
+      if (y < RULER + WAVE || y > RULER + WAVE + WORDS) return { t, x, y, area: 'wave' };
       const lines = this.cb.getLines();
       for (let li = 0; li < lines.length; li++) {
         const ws = lines[li].words;
@@ -260,6 +273,26 @@
           }
         });
       });
+
+      // background track
+      const by = RULER + WAVE + WORDS + 4;
+      const dur = this.cb.getDuration() || 0;
+      if (dur > 0) {
+        const a = Math.max(0, this.tx(0));
+        const b = Math.min(w, this.tx(dur));
+        if (b > a) {
+          c.fillStyle = C.bgTrack;
+          roundRect(c, a, by, b - a, BGT - 4, 4);
+          c.fill();
+          const label = (this.cb.getBgLabel && this.cb.getBgLabel()) || 'Background';
+          c.save();
+          c.beginPath(); c.rect(a, by, b - a, BGT - 4); c.clip();
+          c.fillStyle = C.wordText;
+          c.font = '11.5px "Segoe UI", sans-serif';
+          c.fillText(label, Math.max(a, 0) + 10, by + (BGT - 4) / 2);
+          c.restore();
+        }
+      }
 
       // playhead
       const px = Math.round(this.tx(now)) + 0.5;
