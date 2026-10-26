@@ -184,7 +184,7 @@
       <details class="sec" data-sec="lyrics" open>
         <summary><span>Lyrics</span></summary>
         <div class="sec-body">
-          <p class="hint">Click a line to jump to it. Double-click its text to fix a word. Drag the words on the timeline to line them up.</p>
+          <p class="hint">Click a line to jump to it. On the timeline, drag a line or word anywhere, drag its edge to stretch it, and double-click it to edit the text.</p>
           <ol class="line-list" id="lineList"></ol>
           <div class="row wrap">
             <button class="btn ghost small" id="btnEditLyrics">Edit all lyrics</button>
@@ -205,6 +205,8 @@
               <dt>Tab</dt><dd>Next word (Shift+Tab: previous)</dd>
               <dt>Ctrl + Z / Y</dt><dd>Undo / redo</dd>
               <dt>Hold K</dt><dd>Hold-to-sync: hold while each word is sung</dd>
+              <dt>F</dt><dd>Full screen preview</dd>
+              <dt>Timeline</dt><dd>Drag a line or word to move it, drag an edge to stretch it, double-click to edit the text</dd>
             </dl>
           </details>
         </div>
@@ -238,10 +240,19 @@
       <details class="sec" data-sec="text">
         <summary><span>Text style</span></summary>
         <div class="sec-body">
-          <label class="field">Font
-            <input id="inFont" list="fontList" placeholder="Loading fonts…" autocomplete="off">
-            <datalist id="fontList"></datalist>
-          </label>
+          <div class="field">Font
+            <div class="fontpick" id="fontPick">
+              <button class="fp-btn" id="fpBtn" aria-haspopup="listbox" aria-expanded="false">
+                <span id="fpName">Loading fonts…</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="fp-pop" id="fpPop" hidden>
+                <input id="fpSearch" type="text" placeholder="Search fonts" autocomplete="off" spellcheck="false">
+                <ul id="fpList" role="listbox" tabindex="-1"></ul>
+                <p class="fp-count" id="fpCount"></p>
+              </div>
+            </div>
+          </div>
           <label class="field">Text size <output id="outSize"></output>
             <input id="inSize" type="range" min="40" max="140" step="1">
           </label>
@@ -309,7 +320,23 @@
     <!-- preview -->
     <section class="stage-wrap">
       <div class="stage" id="stage">
-        <canvas id="preview" width="1920" height="1080"></canvas>
+        <div class="pv" id="pv">
+          <canvas id="preview" width="1920" height="1080"></canvas>
+          <div class="pv-controls" id="pvControls">
+            <button class="pv-btn" id="pvPlay" title="Play (Space)" aria-label="Play">
+              <svg viewBox="0 0 24 24" class="i-play"><path d="M8 5.5v13l11-6.5z"/></svg>
+              <svg viewBox="0 0 24 24" class="i-pause"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+            </button>
+            <button class="pv-btn" id="pvBack" title="Back 5 seconds" aria-label="Back 5 seconds"><svg viewBox="0 0 24 24"><path d="M11 17 6 12l5-5M18 17l-5-5 5-5"/></svg></button>
+            <button class="pv-btn" id="pvFwd" title="Forward 5 seconds" aria-label="Forward 5 seconds"><svg viewBox="0 0 24 24"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
+            <span class="pv-time" id="pvTime">0:00 / 0:00</span>
+            <input type="range" id="pvSeek" min="0" max="1000" value="0" step="1" aria-label="Position">
+            <button class="pv-btn" id="pvFull" title="Full screen (F)" aria-label="Full screen">
+              <svg viewBox="0 0 24 24" class="i-full"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+              <svg viewBox="0 0 24 24" class="i-exit"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -338,7 +365,10 @@
         <input type="range" id="inZoom" min="0" max="100" step="1" value="40" aria-label="Timeline zoom">
       </div>
     </div>
-    <canvas id="timeline"></canvas>
+    <div class="tl-wrap">
+      <canvas id="timeline"></canvas>
+      <input type="text" class="tl-edit" id="tlEdit" hidden spellcheck="false" aria-label="Edit lyric text">
+    </div>
   </footer>
 </div>
 

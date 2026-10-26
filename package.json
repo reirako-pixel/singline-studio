@@ -1,7 +1,7 @@
 {
   "name": "singline-studio",
   "productName": "SingLine Studio",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Offline karaoke and lyric video maker: AI vocal removal, word-by-word lyric sync, 1080p MP4 export.",
   "author": "SingLine Studio",
   "license": "MIT",

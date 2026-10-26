@@ -422,8 +422,8 @@
     let w = r.width;
     let h = w / ar;
     if (h > r.height) { h = r.height; w = h * ar; }
-    preview.style.width = Math.floor(w) + 'px';
-    preview.style.height = Math.floor(h) + 'px';
+    $('#pv').style.width = Math.floor(w) + 'px';
+    $('#pv').style.height = Math.floor(h) + 'px';
     S.needsDraw = true;
   }
 
@@ -433,9 +433,46 @@
   // ---------------------------------------------------------------- fonts
   async function initFonts() {
     try { S.fonts = await sl.fonts(); } catch { S.fonts = []; }
-    $('#fontList').innerHTML = S.fonts.map((f) => `<option value="${escapeAttr(f.family)}">`).join('');
-    $('#inFont').placeholder = S.fonts.length ? 'Type to search ' + S.fonts.length + ' fonts' : 'No fonts found';
+    $('#fpName').textContent = S.fonts.length ? (S.p && S.p.style.font.family) || 'Choose a font' : 'No fonts found';
     if (S.p && !$('#app').hidden) await resolveFont();
+  }
+
+  // Font picker: a searchable, scrollable list (a native <datalist> popup
+  // can't be scrolled properly on Windows). Names are shown in their own font.
+  const FP = { open: false, items: [], active: -1 };
+  function fpRender() {
+    const q = $('#fpSearch').value.trim().toLowerCase();
+    const all = q ? S.fonts.filter((f) => f.family.toLowerCase().includes(q)) : S.fonts;
+    FP.items = all.slice(0, 600);
+    const cur = S.p ? S.p.style.font.family : '';
+    $('#fpList').innerHTML = FP.items.map((f, i) =>
+      `<li role="option" data-i="${i}" class="${f.family === cur ? 'current' : ''}" style="font-family:&quot;${escapeAttr(f.family)}&quot;, 'Segoe UI'">${escapeAttr(f.family)}${f.bundled ? '<small>built in</small>' : ''}</li>`).join('');
+    $('#fpCount').textContent = all.length > FP.items.length
+      ? `Showing ${FP.items.length} of ${all.length} fonts. Type to narrow it down.`
+      : `${all.length} font${all.length === 1 ? '' : 's'}`;
+    FP.active = Math.max(0, FP.items.findIndex((f) => f.family === cur));
+    fpHighlight(true);
+  }
+  function fpHighlight(scroll) {
+    $$('#fpList li').forEach((li, i) => li.classList.toggle('active', i === FP.active));
+    const el = $(`#fpList li[data-i="${FP.active}"]`);
+    if (el && scroll) el.scrollIntoView({ block: 'nearest' });
+  }
+  function fpOpen(open) {
+    FP.open = open;
+    $('#fpPop').hidden = !open;
+    $('#fpBtn').setAttribute('aria-expanded', String(open));
+    if (open) { $('#fpSearch').value = ''; fpRender(); $('#fpSearch').focus(); }
+  }
+  async function fpChoose(i) {
+    const f = FP.items[i];
+    if (!f) return;
+    fpOpen(false);
+    pushUndo();
+    S.p.style.font = fontRef(f);
+    $('#fpName').textContent = f.family;
+    await applyFont(S.p.style.font);
+    markDirty();
   }
   const fontRef = (f) => ({ family: f.family, path: f.path, boldPath: f.boldPath || null, metrics: f.metrics });
   async function resolveFont() {
@@ -449,7 +486,8 @@
         if (JSON.stringify(st.font) !== before && S.dir) markDirty();
       }
     }
-    $('#inFont').value = st.font.family;
+    $('#fpName').textContent = st.font.family;
+    $('#fpName').style.fontFamily = `"${st.font.family}", "Segoe UI"`;
     await applyFont(st.font);
   }
   async function applyFont(font) {
@@ -611,6 +649,65 @@
     if (msg) toast(msg);
   }
 
+  // ---------------------------------------------------------------- edit text on the timeline
+  function openInlineEdit({ kind, li, wi, rect }) {
+    const line = S.p.lines[li];
+    if (!line) return;
+    pause();
+    const input = $('#tlEdit');
+    const cv = $('#timeline');
+    const width = Math.max(kind === 'line' ? 260 : 160, Math.min(rect.w + 16, cv.clientWidth - 20));
+    const left = clamp(rect.x - 8, 6, cv.clientWidth - width - 6);
+    input.style.left = left + 'px';
+    input.style.top = (rect.y - 1) + 'px';
+    input.style.width = width + 'px';
+    input.value = kind === 'line' ? L.lineText(line) : line.words[wi].text;
+    input.hidden = false;
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      input.hidden = true;
+      input.onkeydown = null; input.onblur = null;
+      const text = input.value.trim();
+      const before = kind === 'line' ? L.lineText(line) : line.words[wi].text;
+      if (!commit || text === before) return;
+      pushUndo();
+      if (kind === 'line') {
+        if (!text) S.p.lines.splice(li, 1);
+        else S.p.lines[li] = L.retimeLine(line, text);
+      } else {
+        L.replaceWord(line, wi, text);
+        if (!line.words.length) S.p.lines.splice(li, 1);
+      }
+      S.p.lyricsText = S.p.lines.map(L.lineText).join('\n');
+      S.selected = null; timeline.sel = null;
+      renderLineList(); rebuild(); markDirty();
+    };
+    input.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    };
+    input.onblur = () => finish(true);
+  }
+
+  function nudgeLine(dt) {
+    const li = S.selected.li;
+    const line = S.p.lines[li];
+    if (!line) return;
+    pushUndo('nudge-line');
+    const s0 = L.lineStart(line);
+    L.shiftLine(line, Math.max(-s0, dt));
+    const at = L.dropLine(S.p.lines, li, duration());
+    S.selected = { li: at, wi: -1 };
+    timeline.sel = S.selected;
+    timeline.reveal(L.lineStart(S.p.lines[at]));
+    renderLineList(); rebuild(); markDirty();
+  }
+
   // ---------------------------------------------------------------- word nudging
   function flatWords() {
     const out = [];
@@ -629,25 +726,22 @@
   }
   function roundWord(w) { w.start = L.round3(w.start); w.end = L.round3(w.end); }
   function nudge(dt, part) {
+    if (S.selected && S.selected.wi === -1) { nudgeLine(dt); return; }
     const flat = flatWords();
     const k = selectedIndex(flat);
     if (k < 0) return;
     pushUndo('nudge');
     const w = flat[k].w;
-    const prev = k > 0 ? flat[k - 1].w : null;
-    const next = k < flat.length - 1 ? flat[k + 1].w : null;
-    const lo = prev ? prev.start + 0.04 : 0;
-    const hi = next ? next.end - 0.04 : duration() || 1e9;
-    if (part === 'start') w.start = clamp(w.start + dt, lo, w.end - 0.04);
-    else if (part === 'end') w.end = clamp(w.end + dt, w.start + 0.04, hi);
+    const dur = duration() || 1e9;
+    if (part === 'start') w.start = clamp(w.start + dt, 0, w.end - 0.04);
+    else if (part === 'end') w.end = clamp(w.end + dt, w.start + 0.04, dur);
     else {
       const len = w.end - w.start;
-      const s = clamp(w.start + dt, lo, (next ? next.end - 0.04 : hi) - len);
+      const s = clamp(w.start + dt, 0, dur - len);
       w.start = s; w.end = s + len;
     }
-    if (prev && prev.end > w.start) prev.end = w.start;
-    if (next && next.start < w.end) next.start = w.end;
-    roundWord(w); if (prev) roundWord(prev); if (next) roundWord(next);
+    L.pushNeighbours(flat.map((f) => f.w), k);
+    flat.forEach((f) => roundWord(f.w));
     timeline.reveal(w.start);
     rebuild(); markDirty();
   }
@@ -737,8 +831,8 @@
     syncBgVideo(true);
     S.needsDraw = true;
   }
-  audio.addEventListener('play', () => { $('#btnPlay').classList.add('playing'); if (S.media.video) S.media.video.play().catch(() => {}); });
-  audio.addEventListener('pause', () => { $('#btnPlay').classList.remove('playing'); if (S.media.video) S.media.video.pause(); tapUp(); });
+  audio.addEventListener('play', () => { $('#pv').classList.add('playing'); $('#pv').classList.remove('paused'); pokeControls(); $('#btnPlay').classList.add('playing'); if (S.media.video) S.media.video.play().catch(() => {}); });
+  audio.addEventListener('pause', () => { $('#pv').classList.remove('playing'); $('#pv').classList.add('paused'); $('#btnPlay').classList.remove('playing'); if (S.media.video) S.media.video.pause(); tapUp(); });
   audio.addEventListener('seeked', () => { S.needsDraw = true; });
 
   function syncBgVideo(force) {
@@ -774,6 +868,23 @@
     return (bg.type === 'image' ? 'Background image: ' : 'Background video: ') + (bg.path ? sl.basename(bg.path) : 'none chosen');
   }
 
+  // ---------------------------------------------------------------- preview controls / full screen
+  function toggleFullscreen() {
+    const el = $('.stage-wrap');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else el.requestFullscreen().catch(() => toast('Full screen is not available.', true));
+  }
+  let idleTimer = 0;
+  function pokeControls() {
+    const pv = $('#pv');
+    pv.classList.add('show-controls');
+    pv.classList.remove('hide-cursor');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (!audio.paused) { pv.classList.remove('show-controls'); if (document.fullscreenElement) pv.classList.add('hide-cursor'); }
+    }, 2200);
+  }
+
   // ---------------------------------------------------------------- frame loop
   function frame() {
     if (S.p && !$('#app').hidden) {
@@ -785,6 +896,8 @@
         timeline.draw();
         $('#timeNow').textContent = L.fmtTime(t);
         $('#timeDur').textContent = L.fmtTime(duration(), false);
+        $('#pvTime').textContent = L.fmtTime(t, false) + ' / ' + L.fmtTime(duration(), false);
+        if (document.activeElement !== $('#pvSeek')) $('#pvSeek').value = duration() ? Math.round((t / duration()) * 1000) : 0;
         highlightCurrentLine(t);
         S.needsDraw = false;
       }
@@ -805,7 +918,8 @@
     setSeg('#segLayout', st.layout);
     setSeg('#segPosition', st.position);
     setSeg('#segBg', st.bg.type);
-    $('#inFont').value = st.font.family || '';
+    $('#fpName').textContent = st.font.family || 'Choose a font';
+    $('#fpName').style.fontFamily = `"${st.font.family}", "Segoe UI"`;
     $('#inSize').value = st.fontSize; $('#outSize').textContent = st.fontSize + ' px';
     $('#inBold').checked = st.bold;
     $('#inShadow').checked = st.shadow;
@@ -961,6 +1075,12 @@
       else { S.p.lines.forEach((l) => l.words.forEach(roundWord)); rebuild(); markDirty(); renderLineList(); }
       updateUndoButtons();
     },
+    onLineDrop: (li) => {
+      const at = L.dropLine(S.p.lines, li, duration());
+      S.p.lyricsText = S.p.lines.map(L.lineText).join('\n');
+      return at;
+    },
+    onEditText: (info) => openInlineEdit(info),
     onZoom: (f) => {
       $('#inZoom').value = Math.round(f * 100);
       $('#zoomVal').textContent = (timeline.pps / 120).toFixed(timeline.pps < 120 ? 1 : 0) + '×';
@@ -1068,14 +1188,16 @@
       bg.type = v;
       fillAll(); loadBgMedia(); styleChanged(false);
     });
-    $('#inFont').addEventListener('change', async (e) => {
-      const f = S.fonts.find((x) => x.family.toLowerCase() === e.target.value.trim().toLowerCase());
-      if (!f) { toast('That font is not installed. Pick one from the list.', true); e.target.value = S.p.style.font.family; return; }
-      pushUndo();
-      S.p.style.font = fontRef(f);
-      await applyFont(S.p.style.font);
-      markDirty();
-    });
+    $('#fpBtn').onclick = () => fpOpen(!FP.open);
+    $('#fpSearch').oninput = fpRender;
+    $('#fpSearch').onkeydown = (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); FP.active = Math.min(FP.items.length - 1, FP.active + 1); fpHighlight(true); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); FP.active = Math.max(0, FP.active - 1); fpHighlight(true); }
+      else if (e.key === 'Enter') { e.preventDefault(); fpChoose(FP.active); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fpOpen(false); $('#fpBtn').focus(); }
+    };
+    $('#fpList').onclick = (e) => { const li = e.target.closest('li'); if (li) fpChoose(Number(li.dataset.i)); };
+    document.addEventListener('pointerdown', (e) => { if (FP.open && !$('#fontPick').contains(e.target)) fpOpen(false); });
     $('#inSize').oninput = (e) => { S.p.style.fontSize = Number(e.target.value); $('#outSize').textContent = e.target.value + ' px'; styleChanged('size'); };
     $('#inOutline').oninput = (e) => { S.p.style.outlineWidth = Number(e.target.value); $('#outOutline').textContent = e.target.value + ' px'; styleChanged('outline'); };
     $('#inDim').oninput = (e) => { S.p.style.bg.dim = Number(e.target.value); $('#outDim').textContent = Math.round(e.target.value * 100) + '%'; styleChanged('dim'); };
@@ -1104,6 +1226,21 @@
       const any = (p.stems && (p.stems.instrumental || p.stems.vocals)) || p.source;
       if (any) sl.showInFolder(any);
     };
+
+    // preview controls
+    $('#pvPlay').onclick = togglePlay;
+    $('#pvBack').onclick = () => seek(getTime() - 5);
+    $('#pvFwd').onclick = () => seek(getTime() + 5);
+    $('#pvSeek').oninput = (e) => seek((Number(e.target.value) / 1000) * duration());
+    $('#pvFull').onclick = toggleFullscreen;
+    $('#preview').addEventListener('dblclick', toggleFullscreen);
+    $('#pv').addEventListener('pointermove', pokeControls);
+    $('#pv').classList.add('paused');
+    document.addEventListener('fullscreenchange', () => {
+      $('#pvFull').title = document.fullscreenElement ? 'Exit full screen (F or Esc)' : 'Full screen (F)';
+      pokeControls();
+      fitPreview();
+    });
 
     // transport
     $('#btnPlay').onclick = togglePlay;
@@ -1167,6 +1304,7 @@
       if (isTyping(document.activeElement)) return;
       const k = e.key;
       if (k === ' ') { e.preventDefault(); togglePlay(); return; }
+      if (k.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey) { e.preventDefault(); toggleFullscreen(); return; }
       if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); undo(e.shiftKey); return; }
       if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'y') { e.preventDefault(); undo(true); return; }
       if (k.toLowerCase() === 'k' && $('#inTap').checked) { e.preventDefault(); if (!e.repeat) tapDown(); return; }
@@ -1188,6 +1326,9 @@
     window.addEventListener('beforeunload', () => { if (S.saveTimer) saveNow(); });
     sl.onOpenFile((p) => openProject(p));
   }
+
+  // For automated UI tests and troubleshooting from DevTools.
+  window.SLDebug = { get project() { return S.p; }, timeline };
 
   // ================================================================= boot
   async function boot() {

@@ -396,17 +396,178 @@ def cmd_align(args, models):
         stage(12, 16, "Detecting the language")
         lang = _detect_language(model, args.audio)
 
-    stage(16, 95, "Syncing every word to the singing")
-    text = "\n".join(lines)
-    result = call_flexible(model.align, args.audio, text, language=lang, verbose=False, regroup=False)
-    if result is None:
+    stage(16, 80, "Syncing every word to the singing")
+    import whisper
+    audio = whisper.load_audio(args.audio)  # 16 kHz mono float32
+    duration = len(audio) / SR16
+    out = align_lines(model, audio, lines, lang)
+    if out is None:
         raise RuntimeError("The aligner could not match the lyrics to this audio.")
 
-    stage(95, 100, "Matching words to your lyrics")
-    words = [(w.word, float(w.start), float(w.end)) for w in result.all_words()]
-    out = map_words_to_lyrics(lines, words, _audio_duration(args.audio))
+    stage(80, 99, "Checking every line")
+    out = repair_alignment(model, audio, lines, out, lang, duration)
     progress(100, "Done")
     emit({"type": "result", "language": lang, "lines": out})
+
+
+# ---------------------------------------------------------------------------
+# Alignment with repair. Whisper's aligner sometimes loses its place in a
+# passage (a mumbled bar, an ad-lib, lyrics that differ from what's sung) and
+# squeezes many words into a few hundredths of a second, or stretches one word
+# over many seconds. We find those lines, re-align each bad stretch on its own
+# slice of audio, and if that still fails, spread the words over the parts of
+# the slice where the voice is actually audible.
+# ---------------------------------------------------------------------------
+SR16 = 16000
+
+
+def align_lines(model, audio, lines, lang, offset=0.0):
+    """Align lyric lines to a 16 kHz audio array; times are shifted by offset."""
+    if len(audio) < SR16 * 0.3 or not lines:
+        return None
+    result = call_flexible(model.align, audio, "\n".join(lines), language=lang, verbose=False, regroup=False)
+    if result is None:
+        return None
+    words = [(w.word, float(w.start) + offset, float(w.end) + offset) for w in result.all_words()]
+    if not words:
+        return None
+    mapped = map_words_to_lyrics(lines, words, offset + len(audio) / SR16)
+    return mapped if len(mapped) == len([l for l in lines if tokenize(l)]) else None
+
+
+def line_problem(line):
+    """None if the timing looks singable, else 'squeezed' or 'stretched'."""
+    ws = line["words"]
+    if not ws:
+        return None
+    span = ws[-1]["end"] - ws[0]["start"]
+    n = len(ws)
+    avg = span / n
+    tiny = sum(1 for w in ws if w["end"] - w["start"] < 0.07)
+    if (n >= 3 and tiny >= max(2, n * 0.5)) or avg < 0.11:
+        return "squeezed"               # many words crammed into no time
+    limit = 6.0 if n == 1 else 2.8 if n == 2 else 1.6
+    if avg > limit or span > 15.0:
+        return "stretched"              # the aligner sat on one word for ages
+    return None
+
+
+def line_ok(line):
+    return line_problem(line) is None
+
+
+def bad_regions(out):
+    """Groups of consecutive implausible lines, as (first, last) indexes."""
+    regions, i = [], 0
+    while i < len(out):
+        if line_ok(out[i]):
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(out) and not line_ok(out[j + 1]):
+            j += 1
+        regions.append((i, j))
+        i = j + 1
+    return regions
+
+
+def voiced_spans(audio, a, b, frame=0.02):
+    """Time spans in [a, b] where the vocal track is clearly audible."""
+    import numpy as np
+    seg = audio[int(a * SR16):int(b * SR16)]
+    hop = int(frame * SR16)
+    if len(seg) < hop * 3:
+        return [(a, b)]
+    n = len(seg) // hop
+    rms = np.sqrt(np.mean(seg[:n * hop].reshape(n, hop) ** 2, axis=1))
+    peak = float(np.percentile(rms, 98)) or 1e-6
+    thr = max(peak * 0.12, float(np.percentile(rms, 30)) * 1.5)
+    on = rms > thr
+    spans, k = [], 0
+    while k < n:
+        if not on[k]:
+            k += 1
+            continue
+        m = k
+        while m + 1 < n and (on[m + 1] or (m + 6 < n and on[m + 2:m + 6].any())):  # bridge gaps < ~0.1 s
+            m += 1
+        if (m - k + 1) * frame >= 0.12:
+            spans.append((a + k * frame, a + (m + 1) * frame))
+        k = m + 1
+    return spans or [(a, b)]
+
+
+def spread_over_voice(audio, region_lines, a, b):
+    """Place words over the voiced parts of [a, b], weighted by word length."""
+    spans = voiced_spans(audio, a, b)
+    total_voiced = sum(e - s for s, e in spans)
+    toks = [(li, t) for li, l in enumerate(region_lines) for t in tokenize(l)]
+    weights = [max(1, len(t)) for _, t in toks]
+    wsum = float(sum(weights))
+    # walk along the voiced timeline
+    def at(x):  # x in [0, total_voiced] -> real time
+        for s, e in spans:
+            if x <= e - s:
+                return s + x
+            x -= e - s
+        return spans[-1][1]
+    out = [{"text": l, "words": []} for l in region_lines]
+    pos = 0.0
+    for (li, t), w in zip(toks, weights):
+        d = total_voiced * w / wsum
+        s0, e0 = at(pos), at(pos + d * 0.92)
+        out[li]["words"].append({"text": t, "start": round(s0, 3), "end": round(max(e0, s0 + 0.08), 3)})
+        pos += d
+    return [l for l in out if l["words"]]
+
+
+def repair_alignment(model, audio, lines, out, lang, duration):
+    regions = bad_regions(out)
+    if not regions:
+        return out
+    print("repairing %d region(s): %s" % (len(regions), regions), file=sys.stderr)
+    done_until = -1
+    for r_i, (i, j) in enumerate(regions):
+        stage_frac(r_i / max(1, len(regions)))
+        if i <= done_until:
+            continue
+        bounds = lambda i, j: (out[i - 1]["words"][-1]["end"] + 0.05 if i > 0 else 0.0,
+                               out[j + 1]["words"][0]["start"] - 0.05 if j + 1 < len(out) else duration)
+        need = lambda i, j: 0.3 * sum(len(l["words"]) for l in out[i:j + 1])
+        a, b = bounds(i, j)
+        # Too little room: the lines around it took the time. Take in
+        # neighbours (later ones first) until the slice is long enough.
+        while b - a < need(i, j) and (j + 1 < len(out) or i > done_until + 1):
+            if j + 1 < len(out):
+                j += 1
+            else:
+                i -= 1
+            a, b = bounds(i, j)
+        done_until = j
+        if b - a < 0.5:
+            continue
+        texts = [l["text"] for l in out[i:j + 1]]
+        fixed = None
+        try:
+            fixed = align_lines(model, audio[int(a * SR16):int(b * SR16)], texts, lang, offset=a)
+        except Exception as e:  # keep going with the fallback
+            print("region re-align failed: %r" % e, file=sys.stderr)
+        if fixed is None or any(not line_ok(l) for l in fixed):
+            if not any(line_problem(l) == "squeezed" for l in out[i:j + 1]):
+                print("region %d-%d: only stretched, keeping it" % (i, j), file=sys.stderr)
+                continue
+            print("region %d-%d: spreading over the voice" % (i, j), file=sys.stderr)
+            fixed = spread_over_voice(audio, texts, a, b)
+        if len(fixed) == j - i + 1:
+            out[i:j + 1] = fixed
+    # keep everything in order and non-overlapping
+    prev = 0.0
+    for l in out:
+        for w in l["words"]:
+            w["start"] = round(max(w["start"], prev), 3)
+            w["end"] = round(max(w["end"], w["start"] + 0.04), 3)
+            prev = w["end"]
+    return out
 
 
 def cmd_transcribe(args, models):

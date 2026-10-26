@@ -156,6 +156,62 @@ test('16:9 keeps a normal line whole', () => {
   assert.strictEqual(s.items.filter((i) => i.kind === 'line').length, 4);
 });
 
+const mk = (t, s, n = 3) => ({ singer: 1, words: Array.from({ length: n }, (_, i) => ({ text: t + i, start: s + i * 0.5, end: s + i * 0.5 + 0.4 })) });
+const starts = (ls) => ls.map((l) => L.lineStart(l));
+const noOverlap = (ls) => ls.every((l, i) => i === 0 || L.lineStart(l) >= L.lineEnd(ls[i - 1]) - 1e-9);
+
+test('dragging a line past others reorders and keeps it where dropped', () => {
+  const ls = [mk('a', 10), mk('b', 20), mk('c', 30)];
+  L.shiftLine(ls[0], 15);               // 'a' dropped at 25, between b and c
+  const at = L.dropLine(ls, 0, 100);
+  assert.strictEqual(at, 1);
+  assert.deepStrictEqual(ls.map((l) => l.words[0].text), ['b0', 'a0', 'c0']);
+  assert.strictEqual(L.lineStart(ls[1]), 25);
+  assert.ok(noOverlap(ls));
+});
+
+test('dropping a line on top of another pushes the neighbours away', () => {
+  const ls = [mk('a', 10), mk('b', 12), mk('c', 13.6), mk('d', 40)];
+  L.shiftLine(ls[3], -26.5);            // 'd' dropped at 13.5, on top of b and c
+  const at = L.dropLine(ls, 3, 100);
+  assert.strictEqual(L.lineStart(ls[at]), 13.5, 'dropped line stays put');
+  assert.ok(noOverlap(ls), 'no overlaps: ' + starts(ls));
+});
+
+test('dropping a line at the very start makes room without going below 0', () => {
+  const ls = [mk('a', 0.2), mk('b', 10)];
+  L.shiftLine(ls[1], -9.9);             // 'b' at 0.1
+  L.dropLine(ls, 1, 100);
+  assert.ok(ls.every((l) => L.lineStart(l) >= 0));
+  assert.ok(noOverlap(ls));
+});
+
+test('moving a word pushes its neighbours instead of blocking it', () => {
+  const ws = [{ start: 1, end: 1.4 }, { start: 1.5, end: 1.9 }, { start: 2, end: 2.4 }];
+  ws[0].start = 1.3; ws[0].end = 1.7;   // moved right into the second word
+  L.pushNeighbours(ws, 0);
+  assert.ok(ws[1].start >= ws[0].end && ws[2].start >= ws[1].end);
+  const ws2 = [{ start: 1, end: 1.4 }, { start: 1.5, end: 1.9 }];
+  ws2[1].start = 1.2; ws2[1].end = 1.6; // moved left into the first word
+  L.pushNeighbours(ws2, 1);
+  assert.ok(ws2[0].end <= ws2[1].start && ws2[0].start < ws2[0].end);
+});
+
+test('scaling a line keeps word proportions', () => {
+  const l = mk('a', 10, 2);              // 10-10.4, 10.5-10.9
+  const ref = { start: 10, end: 10.9, words: l.words.map((w) => ({ ...w })) };
+  L.scaleLine(l, 20, 21.8, ref);         // twice as long
+  assert.deepStrictEqual(l.words.map((w) => [w.start, w.end]), [[20, 20.8], [21, 21.8]]);
+});
+
+test('editing a word into several words shares its time', () => {
+  const l = { singer: 1, words: [{ text: 'gonna', start: 5, end: 6 }, { text: 'go', start: 6, end: 6.5 }] };
+  L.replaceWord(l, 0, 'going to');
+  assert.deepStrictEqual(l.words.map((w) => w.text), ['going', 'to', 'go']);
+  assert.strictEqual(l.words[0].start, 5);
+  assert.ok(Math.abs(l.words[1].end - 6) < 0.002);
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);
 
 // Optional: render a short clip to eyeball the karaoke output.

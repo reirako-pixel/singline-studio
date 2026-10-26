@@ -101,6 +101,91 @@
     return lines;
   }
 
+  // ---- timeline editing ----
+  function shiftLine(line, dt) {
+    for (const w of line.words) { w.start = round3(w.start + dt); w.end = round3(w.end + dt); }
+  }
+
+  // Stretch or squeeze a line to a new [start, end], keeping word proportions.
+  function scaleLine(line, start, end, ref) {
+    const r0 = ref.start;
+    const r1 = Math.max(ref.end, r0 + 0.01);
+    const k = (end - start) / (r1 - r0);
+    line.words.forEach((w, i) => {
+      w.start = round3(start + (ref.words[i].start - r0) * k);
+      w.end = round3(start + (ref.words[i].end - r0) * k);
+    });
+  }
+
+  // After a line was dragged somewhere (possibly past other lines): put it in
+  // time order and push its neighbours out of the way so nothing overlaps.
+  // The dropped line stays exactly where it was put. Returns its new index.
+  function dropLine(lines, idx, duration) {
+    const moved = lines[idx];
+    lines.splice(idx, 1);
+    let at = lines.findIndex((l) => lineStart(l) > lineStart(moved));
+    if (at < 0) at = lines.length;
+    lines.splice(at, 0, moved);
+    const GAP = 0.02;
+    // later lines: ripple forward
+    for (let i = at + 1; i < lines.length; i++) {
+      const over = lineEnd(lines[i - 1]) + GAP - lineStart(lines[i]);
+      if (over <= 0) break;
+      shiftLine(lines[i], over);
+    }
+    // earlier lines: ripple backward, but never before 0
+    for (let i = at - 1; i >= 0; i--) {
+      const over = lineEnd(lines[i]) + GAP - lineStart(lines[i + 1]);
+      if (over <= 0) break;
+      shiftLine(lines[i], -Math.min(over, lineStart(lines[i])));
+    }
+    // if the start of the song was in the way, the dropped line yields
+    for (let i = 1; i < lines.length; i++) {
+      const over = lineEnd(lines[i - 1]) + GAP - lineStart(lines[i]);
+      if (over > 0) shiftLine(lines[i], over);
+    }
+    if (duration) {
+      const last = lines[lines.length - 1];
+      const past = lineEnd(last) - duration;
+      if (past > 0) shiftLine(last, -Math.min(past, lineStart(last) - (lines.length > 1 ? lineEnd(lines[lines.length - 2]) : 0)));
+    }
+    return at;
+  }
+
+  // Move/trim one word; neighbours are pushed along instead of blocking it.
+  // flat: all words in order; k: index of the word that changed.
+  function pushNeighbours(flat, k, minLen = 0.04) {
+    for (let i = k + 1; i < flat.length; i++) {
+      const over = flat[i - 1].end - flat[i].start;
+      if (over <= 0) break;
+      flat[i].start = round3(flat[i].start + over);
+      flat[i].end = round3(Math.max(flat[i].end + over, flat[i].start + minLen));
+    }
+    for (let i = k - 1; i >= 0; i--) {
+      const over = flat[i].end - flat[i + 1].start;
+      if (over <= 0) break;
+      flat[i].end = round3(flat[i].end - over);
+      flat[i].start = round3(Math.min(flat[i].start - over, flat[i].end - minLen));
+    }
+  }
+
+  // Replace one word's text; several words typed in its place share its time.
+  function replaceWord(line, wi, text) {
+    const toks = tokenize(text);
+    const w = line.words[wi];
+    if (!toks.length) { line.words.splice(wi, 1); return; }
+    const weights = toks.map((t) => Math.max(1, [...t].length));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let t = w.start;
+    const parts = toks.map((tok, i) => {
+      const d = ((w.end - w.start) * weights[i]) / total;
+      const o = { text: tok, start: round3(t), end: round3(t + d) };
+      t += d;
+      return o;
+    });
+    line.words.splice(wi, 1, ...parts);
+  }
+
   function fromWorker(lines) {
     return normalize(lines.map((l) => ({ singer: 1, words: l.words.map((w) => ({ text: w.text, start: w.start, end: w.end })) })));
   }
@@ -112,5 +197,6 @@
     return m + ':' + (ms ? s.toFixed(2).padStart(5, '0') : String(Math.floor(s)).padStart(2, '0'));
   }
 
-  return { tokenize, joinWords, lineText, lineStart, lineEnd, retimeLine, untimedLines, normalize, fromWorker, fmtTime, round3 };
+  return { tokenize, joinWords, lineText, lineStart, lineEnd, retimeLine, untimedLines, normalize, fromWorker, fmtTime, round3,
+    shiftLine, scaleLine, dropLine, pushNeighbours, replaceWord };
 });
