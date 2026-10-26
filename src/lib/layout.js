@@ -21,7 +21,9 @@
 
   const DEFAULT_STYLE = {
     aspect: '16:9',             // 16:9 | 9:16 | 1:1 | 4:5
-    layout: 'karaoke',          // karaoke | single | duet
+    layout: 'karaoke',          // karaoke | single | duet | scroll
+    highlight: 'wipe',          // wipe | word | fade
+    glow: false,                // neon glow on sung words
     position: 'lower',          // lower | center | upper
     font: { family: 'Segoe UI', path: '' },
     fontSize: 78,
@@ -107,6 +109,7 @@
     const ay = anchorY(style, H);
     const gap = style.fontSize * 1.55;
     const twoRow = style.layout !== 'single';
+    if (style.layout === 'scroll') return buildScroll(project, style, lines, measure, W, H);
 
     // ---- when each line is visible ----
     const appear = new Array(n);
@@ -142,7 +145,7 @@
         align = sg === 1 ? 'left' : sg === 2 ? 'right' : 'center';
       }
       const p = placeLine(lines[i], style, measure, y, align, W);
-      items.push({ kind: 'line', index: i, appear: appear[i], hide: hide[i], slot, align, fill: fillFor(style, p.singer), ...p });
+      items.push({ kind: 'line', index: i, appear: appear[i], hide: hide[i], fadeIn: FADE, fadeOut: FADE, slot, align, fill: fillFor(style, p.singer), ...p });
     }
 
     // ---- countdown dots before each verse ----
@@ -168,10 +171,111 @@
     return { W, H, style, items, duration: project.duration || (n ? ends[n - 1] + 3 : 10) };
   }
 
-  // Opacity of an item at time t (short fade in/out).
+  // ---------------------------------------------------------------------
+  // Scrolling layout: the lyrics sit in a column that moves up one line each
+  // time a new line starts. The current line is in focus (full size, full
+  // opacity); sung lines above and upcoming lines below are smaller and dim.
+  // Each line is split into one item per stretch between line changes, with
+  // an explicit motion (y, opacity, size) at the start of the stretch, so the
+  // preview and the ASS export move identically.
+  // ---------------------------------------------------------------------
+  const SCROLL = { above: 2, below: 3, trans: 0.35, dimScale: 0.8 };
+  const slotAlpha = (k) => (k === 0 ? 1 : k === -1 ? 0.5 : k === -2 ? 0.25 : k === 1 ? 0.6 : k === 2 ? 0.4 : k === 3 ? 0.2 : 0);
+  const slotScale = (k) => (k === 0 ? 1 : SCROLL.dimScale);
+
+  function buildScroll(project, style, lines, measure, W, H) {
+    const items = [];
+    const n = lines.length;
+    if (!n) return { W, H, style, items, duration: project.duration || 10 };
+    const starts = lines.map(L.lineStart);
+    const ends = lines.map(L.lineEnd);
+    const gap = style.fontSize * 1.45;
+    const focusY = style.position === 'center' ? H * 0.5 : style.position === 'upper' ? H * 0.36 : H * 0.6;
+    const yOf = (k) => focusY + k * gap;
+    const placed = lines.map((l) => placeLine(l, style, measure, focusY, 'center', W));
+
+    // when the column moves to line k
+    const T = [];
+    for (let k = 0; k < n; k++) T.push(Math.max(k ? T[k - 1] + 0.05 : 0, starts[k] - 0.3));
+    const tStart = Math.max(0, T[0] - 3);
+    const tEnd = ends[n - 1] + 2;
+    const bounds = [tStart, ...T, tEnd];
+
+    for (let j = 0; j + 1 < bounds.length; j++) {
+      const A = bounds[j];
+      const B = bounds[j + 1];
+      if (B - A < 0.02) continue;
+      const c = j - 1;                           // line in focus during [A, B)
+      const moving = j >= 1;                     // the column moves at A
+      const tr = Math.min(SCROLL.trans, (B - A) * 0.9);
+      for (let i = 0; i < n; i++) {
+        const k1 = i - c;
+        const k0 = moving ? i - (c - 1) : k1;
+        const vis = (k) => k >= -SCROLL.above && k <= SCROLL.below;
+        if (!vis(k1) && !vis(k0)) continue;
+        const p = placed[i];
+        items.push({
+          kind: 'line', index: i, appear: A, hide: B,
+          fadeIn: j === 0 ? 0.4 : 0, fadeOut: j + 2 === bounds.length ? 0.5 : 0,
+          align: 'center', fill: fillFor(style, p.singer), ...p, y: yOf(k1),
+          motion: {
+            dur: moving ? tr : 0,
+            y0: yOf(k0), y1: yOf(k1),
+            a0: slotAlpha(k0), a1: slotAlpha(k1),
+            s0: slotScale(k0), s1: slotScale(k1),
+          },
+        });
+      }
+    }
+
+    // countdown dots to the left of a line that starts after a long break
+    if (style.countdown) {
+      for (let i = 0; i < n; i++) {
+        const quiet = i === 0 ? starts[0] : starts[i] - ends[i - 1];
+        if (quiet < (i === 0 ? 3.2 : 4.5)) continue;
+        const from = Math.max(starts[i] - 3, i > 0 ? ends[i - 1] + 0.3 : 0, tStart);
+        const r = Math.max(8, style.fontSize * 0.14);
+        const p = placed[i];
+        const left = p.cx - (p.width * SCROLL.dimScale) / 2;
+        items.push({ kind: 'countdown', index: i, appear: from, hide: starts[i], start: starts[i],
+          cx: Math.max(r * 4, left - r * 6), y: yOf(1), r, fill: fillFor(style, p.singer) });
+      }
+    }
+    if (style.showTitle && (project.title || project.artist)) {
+      const until = Math.min(tStart - 0.2, 8);
+      if (until - 0.3 >= 1.2) {
+        items.push({ kind: 'title', appear: 0.3, hide: until, title: project.title || '', artist: project.artist || '',
+          cx: W / 2, y: H * 0.46, fontPx: Math.round(style.fontSize * 1.25) });
+      }
+    }
+    return { W, H, style, items, duration: project.duration || tEnd + 1 };
+  }
+
+  // Motion state of an item at time t: { y, a (opacity), s (extra scale) }.
+  function motionAt(item, t) {
+    const m = item.motion;
+    if (!m) return { y: item.y, a: 1, s: 1 };
+    const k = m.dur > 0 ? Math.max(0, Math.min(1, (t - item.appear) / m.dur)) : 1;
+    return { y: m.y0 + (m.y1 - m.y0) * k, a: m.a0 + (m.a1 - m.a0) * k, s: m.s0 + (m.s1 - m.s0) * k };
+  }
+
+  // Opacity of an item at time t (fades at the edges times its motion).
   function alphaAt(item, t) {
     if (t < item.appear || t > item.hide) return 0;
-    return Math.min(1, (t - item.appear) / FADE, (item.hide - t) / FADE);
+    const fi = item.fadeIn === undefined ? FADE : item.fadeIn;
+    const fo = item.fadeOut === undefined ? FADE : item.fadeOut;
+    let a = 1;
+    if (fi > 0) a = Math.min(a, (t - item.appear) / fi);
+    if (fo > 0) a = Math.min(a, (item.hide - t) / fo);
+    return Math.max(0, a) * motionAt(item, t).a;
+  }
+
+  // Progress (0..1) of each word's highlight at time t, per highlight style.
+  function wordProgress(style, word, t) {
+    if (t >= word.end) return 1;
+    if (t < word.start) return 0;
+    if (style.highlight === 'word') return 1;
+    return (t - word.start) / Math.max(0.001, word.end - word.start);
   }
 
   // How much of a placed line is sung at time t, in px from its left edge.
@@ -185,5 +289,5 @@
     return w;
   }
 
-  return { W, H, FADE, ASPECTS, dims, DEFAULT_STYLE, withDefaults, buildScene, alphaAt, sungWidth, fillFor };
+  return { W, H, FADE, ASPECTS, dims, DEFAULT_STYLE, withDefaults, buildScene, alphaAt, motionAt, sungWidth, wordProgress, fillFor, SCROLL };
 });

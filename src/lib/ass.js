@@ -33,8 +33,9 @@
     return m && m.a > 0 ? m.a + m.d : 1.2;
   }
 
-  // Karaoke text for one line: \kf syllables timed from the event start.
-  function karaoke(item) {
+  // Karaoke text for one line, timed from the event start. kTag is \kf for a
+  // smooth left-to-right wipe or \k for whole words switching at once.
+  function karaoke(item, kTag = 'kf') {
     const t0 = item.appear;
     const cs = (t) => Math.round((t - t0) * 100);
     let cursor = 0;
@@ -45,7 +46,7 @@
       if (i === 0) {
         if (s > 0) out += `{\\k${s}}`;
       }
-      out += `{\\kf${e - s}}${esc(w.text)}`;
+      out += `{\\${kTag}${e - s}}${esc(w.text)}`;
       cursor = e;
       const next = item.words[i + 1];
       if (next) {
@@ -58,6 +59,31 @@
     });
     return out;
   }
+
+  // Per-word colour fade: each word turns from the unsung to the sung colour
+  // over the time it is sung. tagFor(startMs, endMs) gives the word's tags.
+  function perWord(item, tagFor, restTag) {
+    const t0 = item.appear;
+    const ms = (t) => Math.round((t - t0) * 1000);
+    let out = '';
+    item.words.forEach((w, i) => {
+      out += `{${tagFor(ms(w.start), Math.max(ms(w.start) + 1, ms(w.end)))}}${esc(w.text)}`;
+      const next = item.words[i + 1];
+      if (next && needsSpace(w.text, next.text)) out += `{${restTag}} `;
+    });
+    return out;
+  }
+
+  function mixHex(a, b, k) {
+    const p = (h) => [1, 3, 5].map((i) => parseInt(String(h).replace('#', '').padEnd(6, '0').slice(i - 1, i + 1), 16));
+    const A = p(a);
+    const B = p(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * Math.max(0, Math.min(1, k))).toString(16).padStart(2, '0')).join('');
+  }
+
+  // Alpha tags: op = opacity 0..1. The shadow keeps its own 55% strength.
+  const hexA = (op) => Math.round((1 - Math.max(0, Math.min(1, op))) * 255).toString(16).padStart(2, '0').toUpperCase();
+  const alphaTags = (op, shadowOp = 0.55) => `\\1a&H${hexA(op)}&\\2a&H${hexA(op)}&\\3a&H${hexA(op)}&\\4a&H${hexA(op * shadowOp)}&`;
 
   const NOSPACE = /[぀-ヿ㐀-䶿一-鿿豈-﫿฀-๿ｦ-ﾟ]/;
   function needsSpace(a, b) {
@@ -104,11 +130,53 @@
     const ev = [];
     const fadeMs = Math.round(Layout.FADE * 1000);
 
+    const mode = s.highlight || 'wipe';
+    const glowBlur = r1(Math.max(5, s.fontSize * 0.12));
+    const glowBord = r1(Math.max(2, s.fontSize * 0.05));
+    const GLOW_OP = 0.85;
+
     for (const it of scene.items) {
       if (it.kind === 'line') {
-        const sc = r1(it.scale * 100);
-        const tags = `\\an5\\pos(${r1(it.cx)},${r1(it.y)})\\fscx${sc}\\fscy${sc}\\fad(${fadeMs},${fadeMs})\\1c${inlineCol(it.fill)}`;
-        ev.push(`Dialogue: 1,${ts(it.appear)},${ts(it.hide)},Lyric,,0,0,0,,{${tags}}${karaoke(it)}`);
+        // position, size and opacity, animated at the start of the event
+        const m = it.motion || { dur: 0, y0: it.y, y1: it.y, a0: 1, a1: 1, s0: 1, s1: 1 };
+        const durMs = Math.round(m.dur * 1000);
+        const sc0 = r1(it.scale * 100 * m.s0);
+        const sc1 = r1(it.scale * 100 * m.s1);
+        const fi = Math.round((it.fadeIn === undefined ? Layout.FADE : it.fadeIn) * 1000);
+        const fo = Math.round((it.fadeOut === undefined ? Layout.FADE : it.fadeOut) * 1000);
+        const place = durMs > 0 && m.y0 !== m.y1
+          ? `\\move(${r1(it.cx)},${r1(m.y0)},${r1(it.cx)},${r1(m.y1)},0,${durMs})`
+          : `\\pos(${r1(it.cx)},${r1(m.y1)})`;
+        const sizeAnim = sc0 !== sc1 && durMs > 0 ? `\\t(0,${durMs},\\fscx${sc1}\\fscy${sc1})` : '';
+        const pos = `\\an5${place}\\fscx${sc0}\\fscy${sc0}${sizeAnim}${fi || fo ? `\\fad(${fi},${fo})` : ''}`;
+        const alpha = alphaTags(m.a0) + (durMs > 0 && m.a0 !== m.a1 ? `\\t(0,${durMs},${alphaTags(m.a1)})` : '');
+        const fill = inlineCol(it.fill);
+        const unsung = inlineCol(s.textColor);
+
+        // neon glow: a thickened, blurred copy of each sung word underneath,
+        // fading in while the word is sung (instantly for word-by-word)
+        if (s.glow) {
+          const on = `\\1a&H${hexA(m.a1 * GLOW_OP)}&\\3a&H${hexA(m.a1 * GLOW_OP)}&`;
+          const off = '\\1a&HFF&\\3a&HFF&';
+          const gBase = `${pos}\\bord${glowBord}\\shad0\\blur${glowBlur}\\1c${fill}\\3c${fill}\\4a&HFF&`;
+          const body = perWord(it, (a, b) => {
+            if (mode === 'word') b = Math.min(b, a + 60);
+            if (b <= 0) return on;
+            const k = a >= 0 ? 0 : -a / (b - a);
+            const start = k > 0 ? `\\1a&H${hexA(m.a1 * GLOW_OP * k)}&\\3a&H${hexA(m.a1 * GLOW_OP * k)}&` : off;
+            return `${start}\\t(${Math.max(0, a)},${b},${on})`;
+          }, off);
+          ev.push(`Dialogue: 0,${ts(it.appear)},${ts(it.hide)},Lyric,,0,0,0,,{${gBase}}${body}`);
+        }
+
+        if (mode === 'fade') {
+          // a word already part-way sung when the event starts begins part-way
+          const startCol = (a, b) => (a >= 0 ? unsung : inlineCol(mixHex(s.textColor, it.fill, -a / (b - a))));
+          const body = perWord(it, (a, b) => (b <= 0 ? `\\1c${fill}` : `\\1c${startCol(a, b)}\\t(${Math.max(0, a)},${b},\\1c${fill})`), `\\1c${unsung}`);
+          ev.push(`Dialogue: 1,${ts(it.appear)},${ts(it.hide)},Lyric,,0,0,0,,{${pos}${alpha}}${body}`);
+        } else {
+          ev.push(`Dialogue: 1,${ts(it.appear)},${ts(it.hide)},Lyric,,0,0,0,,{${pos}${alpha}\\1c${fill}}${karaoke(it, mode === 'word' ? 'k' : 'kf')}`);
+        }
       } else if (it.kind === 'countdown') {
         // three dots that go out one per second: 3, 2, 1, sing
         const spacing = it.r * 3.2;
@@ -129,5 +197,5 @@
     return head.join('\n') + '\n' + ev.join('\n') + '\n';
   }
 
-  return { buildAss, col, ts, assRatio };
+  return { buildAss, col, ts, assRatio, mixHex, GLOW_OP: 0.85 };
 });

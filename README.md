@@ -27,7 +27,12 @@ Features:
 - **Sync editor**: waveform timeline with a block per word. Drag to move,
   drag edges to trim, arrow keys to nudge by 10 ms, undo/redo, and a
   hold-to-sync mode (hold K while each word is sung).
-- **Layouts**: Karaoke (two lines with a countdown before each verse),
+- **Themes**: nine skins for the whole app, neon (Neon Tokyo, Synthwave,
+  Cyber Lime, Electric Violet) and calm (Midnight, Aurora, Lavender Dusk,
+  Ocean Calm, Sakura Night). One click copies the theme's colours to the lyrics.
+- **Highlight animations**: smooth wipe, word by word, or fade in, with an
+  optional neon glow on sung words.
+- **Layouts**: Scrolling (lyrics roll up with the current line in focus), Karaoke (two lines with a countdown before each verse),
   Single line (for Reels/TikTok style lyric videos), and Duet (singer 1 left,
   singer 2 right, shared lines centred, a colour per singer).
 - **Styling**: any installed font, size, bold, colours for unsung / sung /

@@ -1,7 +1,7 @@
 // Canvas renderer for the live preview. Draws the same scene the ASS export
 // uses, with matching font metrics, outline, shadow and wipe.
 (function (root) {
-  const { alphaAt, sungWidth } = root.SLLayout;
+  const { alphaAt, motionAt, wordProgress } = root.SLLayout;
 
   function fontCss(style, px, cssFamily, boldOverride) {
     const bold = boldOverride === undefined ? style.bold : boldOverride;
@@ -81,32 +81,131 @@
     ctx.fillText(text, 0, 0);
   }
 
+  // Offscreen buffer for lines drawn with partial opacity: the line is drawn
+  // fully opaque, then composited once, so overlapping layers don't show
+  // through each other (that is how libass renders a translucent line).
+  let buf = null;
+  function getBuffer(w, h) {
+    if (!buf) buf = document.createElement('canvas');
+    if (buf.width !== w || buf.height !== h) { buf.width = w; buf.height = h; }
+    return buf.getContext('2d');
+  }
+
+  const GLOW_OP = 0.85;
+
   function drawLine(ctx, it, style, t, cssFamily) {
     const a = alphaAt(it, t);
-    if (a <= 0) return;
-    const by = baseline(style, it.y, it.fontPx * it.scale);
+    if (a <= 0.003) return;
+    if (a < 0.999) {
+      const b = getBuffer(ctx.canvas.width, ctx.canvas.height);
+      b.setTransform(1, 0, 0, 1, 0, 0);
+      b.clearRect(0, 0, b.canvas.width, b.canvas.height);
+      b.setTransform(ctx.getTransform());
+      paintLine(b, it, style, t, cssFamily);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = a;
+      ctx.drawImage(b.canvas, 0, 0);
+      ctx.restore();
+    } else {
+      paintLine(ctx, it, style, t, cssFamily);
+    }
+  }
+
+  function paintLine(ctx, it, style, t, cssFamily) {
+    const mo = motionAt(it, t);
+    const scale = it.scale * mo.s;
+    const width = (it.width / it.scale) * scale;
+    const left = it.cx - width / 2;
+    const by = baseline(style, mo.y, it.fontPx * scale);
+    const mode = style.highlight || 'wipe';
+    const k = scale / it.scale;  // word x positions are stored at it.scale
     ctx.save();
-    ctx.globalAlpha = a;
-    ctx.translate(it.left, by);
+    ctx.translate(left, by);
     ctx.font = fontCss(style, it.fontPx, cssFamily);
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
+
+    // sung regions: [x0, x1, amount] in line pixels
+    const regions = [];
+    if (mode === 'fade') {
+      for (const w of it.words) {
+        const p = wordProgress(style, w, t);
+        if (p > 0) regions.push([w.x0 * k, w.x1 * k, p]);
+      }
+    } else {
+      let sw = 0;
+      for (const w of it.words) {
+        const p = wordProgress(style, w, t);
+        if (p <= 0) break;
+        sw = p >= 1 ? w.x1 : w.x0 + (w.x1 - w.x0) * p;
+        if (p < 1) break;
+      }
+      if (sw > 0) regions.push([-4, sw * k + (sw >= it.words[it.words.length - 1].x1 ? 4 : 0), 1]);
+    }
+    const clipTo = (c, x0, x1) => { c.beginPath(); c.rect(x0, -it.fontPx * 2, x1 - x0, it.fontPx * 4); c.clip(); };
+
+    // neon glow: a thickened, blurred copy of each sung word underneath
+    if (style.glow) {
+      const lit = it.words.map((w) => {
+        if (mode !== 'word') return wordProgress(style, w, t);
+        return t < w.start ? 0 : Math.min(1, (t - w.start) / 0.06);
+      });
+      if (lit.some((v) => v > 0)) {
+        const dev = Math.abs(ctx.getTransform().a);  // device px per frame px
+        const blur = Math.max(5, style.fontSize * 0.12);
+        const bord = Math.max(2, style.fontSize * 0.05);
+        const g = getGlowBuffer(ctx.canvas.width, ctx.canvas.height);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+        g.setTransform(ctx.getTransform());
+        g.scale(scale, scale);
+        g.font = ctx.font;
+        g.textBaseline = 'alphabetic';
+        g.lineJoin = 'round';
+        g.fillStyle = it.fill;
+        g.strokeStyle = it.fill;
+        g.lineWidth = (bord * 2) / scale;
+        it.words.forEach((w, i) => {
+          if (lit[i] <= 0) return;
+          g.globalAlpha = lit[i];
+          const x = (w.x0 / it.scale);
+          g.strokeText(w.text, x, 0);
+          g.fillText(w.text, x, 0);
+        });
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha *= GLOW_OP;
+        ctx.filter = `blur(${(blur * dev).toFixed(2)}px)`;
+        ctx.drawImage(g.canvas, 0, 0);
+        ctx.restore();
+      }
+    }
+
     // unsung text with outline and shadow
     ctx.save();
-    ctx.scale(it.scale, it.scale);
-    drawTextLayers(ctx, it.text, style, { shadow: style.shadow, outline: true, fill: style.textColor, scale: it.scale });
+    ctx.scale(scale, scale);
+    drawTextLayers(ctx, it.text, style, { shadow: style.shadow, outline: true, fill: style.textColor, scale });
     ctx.restore();
-    // sung part, clipped to the wipe position
-    const sw = sungWidth(it, t);
-    if (sw > 0) {
-      ctx.beginPath();
-      ctx.rect(-4, -it.fontPx * 2, sw + 4, it.fontPx * 4);
-      ctx.clip();
-      ctx.scale(it.scale, it.scale);
+
+    // sung fill on top
+    for (const [x0, x1, amt] of regions) {
+      ctx.save();
+      clipTo(ctx, x0, x1);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha *= amt;
       ctx.fillStyle = it.fill;
       ctx.fillText(it.text, 0, 0);
+      ctx.restore();
     }
     ctx.restore();
+  }
+
+  let gbuf = null;
+  function getGlowBuffer(w, h) {
+    if (!gbuf) gbuf = document.createElement('canvas');
+    if (gbuf.width !== w || gbuf.height !== h) { gbuf.width = w; gbuf.height = h; }
+    return gbuf.getContext('2d');
   }
 
   function drawCountdown(ctx, it, t) {

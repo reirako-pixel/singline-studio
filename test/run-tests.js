@@ -156,6 +156,41 @@ test('16:9 keeps a normal line whole', () => {
   assert.strictEqual(s.items.filter((i) => i.kind === 'line').length, 4);
 });
 
+test('scroll layout: one line in focus, others above and below, no stacking', () => {
+  const sc = Lay.buildScene({ lines: timed(), style: { layout: 'scroll' } }, measure);
+  const lines = sc.items.filter((i) => i.kind === 'line');
+  for (const t of [5.5, 9, 16, 21.5]) {
+    const vis = lines.filter((i) => Lay.alphaAt(i, t) > 0.01);
+    const ys = vis.map((i) => Lay.motionAt(i, t + 0.5 > i.hide ? t : t).y);
+    assert.strictEqual(new Set(vis.map((i) => i.index)).size, vis.length, 'a line drawn twice at ' + t);
+    const focus = vis.filter((i) => Lay.motionAt(i, t).a > 0.99);
+    assert.strictEqual(focus.length, 1, 'exactly one line in focus at ' + t);
+    const sorted = [...ys].sort((a, b) => a - b);
+    for (let k = 1; k < sorted.length; k++) assert.ok(sorted[k] - sorted[k - 1] > 40, 'lines overlap at ' + t);
+  }
+  const inFocus = (t) => lines.find((i) => Lay.alphaAt(i, t) > 0.99).index;
+  assert.strictEqual(inFocus(6.2), 0);
+  assert.strictEqual(inFocus(19), 2);
+});
+
+test('ASS: each highlight style uses the right tags', () => {
+  const st = (o) => ({ layout: 'karaoke', font: { family: 'X', metrics: { a: 0.93, d: 0.24 } }, ...o });
+  const ev = (o) => Ass.buildAss(Lay.buildScene({ lines: timed(), style: st(o) }, measure)).split('\n').filter((l) => l.startsWith('Dialogue:'));
+  assert.ok(ev({ highlight: 'wipe' }).some((l) => l.includes('\\kf')));
+  const word = ev({ highlight: 'word' }).filter((l) => l.startsWith('Dialogue: 1'));
+  assert.ok(word.every((l) => !l.includes('\\kf')) && word.some((l) => /\\k\d/.test(l)));
+  const fade = ev({ highlight: 'fade' }).filter((l) => l.startsWith('Dialogue: 1'));
+  assert.ok(fade.some((l) => l.includes('\\t(') && l.includes('\\1c')) && fade.every((l) => !l.includes('\\k')));
+  const glow = ev({ highlight: 'wipe', glow: true });
+  assert.ok(glow.some((l) => l.startsWith('Dialogue: 0') && l.includes('\\blur')), 'glow layer');
+  assert.ok(!ev({ glow: false }).some((l) => l.includes('\\blur')));
+});
+
+test('ASS: scrolling lines move and resize with \\move and \\t', () => {
+  const ass = Ass.buildAss(Lay.buildScene({ lines: timed(), style: { layout: 'scroll', font: { family: 'X', metrics: { a: 0.93, d: 0.24 } } } }, measure));
+  assert.ok(ass.includes('\\move(') && /\\t\(0,\d+,\\fscx/.test(ass));
+});
+
 const mk = (t, s, n = 3) => ({ singer: 1, words: Array.from({ length: n }, (_, i) => ({ text: t + i, start: s + i * 0.5, end: s + i * 0.5 + 0.4 })) });
 const starts = (ls) => ls.map((l) => L.lineStart(l));
 const noOverlap = (ls) => ls.every((l, i) => i === 0 || L.lineStart(l) >= L.lineEnd(ls[i - 1]) - 1e-9);

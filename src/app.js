@@ -18,6 +18,40 @@
   const AUDIO_EXT = /\.(mp3|wav|flac|aac|m4a|ogg|opus|wma|mp4|mkv|mov|webm|avi)$/i;
   const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5];
 
+  // UI skins. ids match :root[data-theme] blocks in style.css ('midnight' = default).
+  const THEMES = [
+    { id: 'neon-tokyo', name: 'Neon Tokyo', group: 'neon', sw: ['#0B0C1D', '#FF3EA5', '#22E4FF'] },
+    { id: 'synthwave', name: 'Synthwave', group: 'neon', sw: ['#1A0B2E', '#FF7AC6', '#FFB86B'] },
+    { id: 'cyber-lime', name: 'Cyber Lime', group: 'neon', sw: ['#08130F', '#B6FF3B', '#2EF2D0'] },
+    { id: 'electric-violet', name: 'Electric Violet', group: 'neon', sw: ['#100A24', '#9D6BFF', '#3DF5FF'] },
+    { id: 'midnight', name: 'Midnight', group: 'calm', sw: ['#1A1E3A', '#FFC24B', '#5FD4E0'], note: 'Original' },
+    { id: 'aurora', name: 'Aurora', group: 'calm', sw: ['#0F2027', '#6EF0C2', '#8AB4FF'] },
+    { id: 'lavender-dusk', name: 'Lavender Dusk', group: 'calm', sw: ['#221B33', '#C9A7FF', '#FFB3C7'] },
+    { id: 'ocean-calm', name: 'Ocean Calm', group: 'calm', sw: ['#0D1B2A', '#4FD1E8', '#9FE3B4'] },
+    { id: 'sakura-night', name: 'Sakura Night', group: 'calm', sw: ['#24161F', '#FF9EC4', '#FFD6A5'] },
+  ];
+  function applyTheme(id, save = true) {
+    const t = THEMES.find((x) => x.id === id) ? id : 'midnight';
+    if (t === 'midnight') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('sl-theme', t); } catch { /* not critical */ }
+    if (save) sl.setSettings({ theme: t });
+    $$('.theme-card').forEach((c) => c.classList.toggle('on', c.dataset.id === t));
+    // canvas colours come from the CSS variables
+    requestAnimationFrame(() => { timeline.readColors(); timeline.draw(); });
+  }
+  function renderThemes() {
+    const card = (t) => `<button class="theme-card" data-id="${t.id}">
+      <span class="sw" style="background:${t.sw[0]}"><i style="background:${t.sw[1]};box-shadow:${t.group === 'neon' ? '0 0 10px ' + t.sw[1] : 'none'}"></i><i style="background:${t.sw[2]}"></i></span>
+      <span>${t.name}${t.note ? `<small>${t.note}</small>` : ''}</span></button>`;
+    $('#themesNeon').innerHTML = THEMES.filter((t) => t.group === 'neon').map(card).join('');
+    $('#themesCalm').innerHTML = THEMES.filter((t) => t.group === 'calm').map(card).join('');
+    $$('.theme-card').forEach((c) => (c.onclick = () => applyTheme(c.dataset.id)));
+  }
+  // apply the remembered theme before anything is drawn
+  try { applyThemeEarly(localStorage.getItem('sl-theme')); } catch { /* ignore */ }
+  function applyThemeEarly(id) { if (id && id !== 'midnight') document.documentElement.dataset.theme = id; }
+
   const S = {
     dir: null, p: null, scene: null, page: null,
     fonts: [], fontAlias: 'Segoe UI', loadedFonts: new Map(),
@@ -916,6 +950,14 @@
     $('#projTitle').textContent = p.title || 'Untitled';
     setSeg('#segAspect', st.aspect);
     setSeg('#segLayout', st.layout);
+    $('#layoutHint').textContent = {
+      karaoke: 'Two lines at a time, each word filling in as it is sung, with a countdown before every verse.',
+      scroll: 'The lyrics scroll up the screen: the line being sung is in focus, with the next lines already in view.',
+      single: 'One line at a time, big and centred. Good for lyric videos, Reels and TikTok.',
+      duet: 'Singer 1 on the left, singer 2 on the right, shared lines centred. Set who sings each line in Lyrics.',
+    }[st.layout] || '';
+    $$('#hlCards .hl-card').forEach((b) => b.classList.toggle('on', b.dataset.v === (st.highlight || 'wipe')));
+    $('#inGlow').checked = !!st.glow;
     setSeg('#segPosition', st.position);
     setSeg('#segBg', st.bg.type);
     $('#fpName').textContent = st.font.family || 'Choose a font';
@@ -1010,6 +1052,11 @@
       $('#exportDone').hidden = false;
       $('#exportPath').textContent = out;
       $('#exportDone').dataset.path = out;
+      if (S.closeAfterExport) {
+        S.closeAfterExport = false;
+        $('#exportSheet').hidden = true;
+        showCloseSheet({ busy: false }, 'Exported ' + sl.basename(out) + '.');
+      }
     } catch (e) {
       hideBusy();
       $('#exportSheet').hidden = false;
@@ -1039,6 +1086,42 @@
     $('#busy').hidden = true;
     if (offProgress) offProgress();
     offProgress = null;
+  }
+
+  // ---------------------------------------------------------------- closing the app
+  // The window asks before closing: save the project, save a copy somewhere
+  // else, or export the video first.
+  function showCloseSheet(info, note) {
+    const inEditor = !$('#app').hidden && S.p && S.dir;
+    const busy = info && info.busy;
+    if (!inEditor && !busy) { sl.closeNow(); return; }
+    pause();
+    $$('.modal').forEach((m) => { if (m.id !== 'closeSheet' && m.id !== 'busy') m.hidden = true; });
+    let msg = note ? note + ' ' : '';
+    if (busy) msg += 'The AI or an export is still running. Closing now stops it. ';
+    if (inEditor) msg += 'Your project is saved automatically in Documents\\SingLine Projects. You can also save a copy somewhere else, or export the video before you close.';
+    $('#closeMsg').textContent = msg;
+    $('#btnCloseSaveAs').hidden = !inEditor;
+    $('#btnCloseExport').hidden = !inEditor || busy;
+    $('#btnCloseSave').textContent = inEditor ? 'Save project and close' : 'Close';
+    $('#closeSheet').hidden = false;
+    $('#btnCloseSave').focus();
+  }
+  async function closeSaving() {
+    $('#btnCloseSave').disabled = true;
+    await saveNow();
+    sl.closeNow();
+  }
+  async function closeSaveAs() {
+    await saveNow();
+    try {
+      const file = await sl.saveProjectAs(S.dir, S.p);
+      if (!file) return; // cancelled: stay on the dialog
+      $('#closeMsg').textContent = 'Saved a copy to ' + file + '. Closing…';
+      setTimeout(() => sl.closeNow(), 700);
+    } catch (e) {
+      toast('Could not save a copy: ' + parseErr(e).message, true);
+    }
   }
 
   // ---------------------------------------------------------------- app settings
@@ -1155,6 +1238,8 @@
     $('#btnRedo').onclick = () => undo(true);
     $('#btnExportOpen').onclick = openExport;
     $('#btnSettings').onclick = openSettings;
+    $('#btnTheme').onclick = () => openSettings().then(() => $('#themeHeading').scrollIntoView());
+    $('#btnThemeWelcome').onclick = () => openSettings();
 
     // rail + sections
     $$('#rail button').forEach((b) => (b.onclick = () => openSection(b.dataset.sec)));
@@ -1179,7 +1264,25 @@
 
     // look
     onSeg('#segAspect', (v) => { S.p.style.aspect = v; styleChanged(); });
-    onSeg('#segLayout', (v) => { S.p.style.layout = v; styleChanged(); });
+    onSeg('#segLayout', (v) => { S.p.style.layout = v; styleChanged(); fillAll(); });
+    $$('#hlCards .hl-card').forEach((b) => (b.onclick = () => {
+      pushUndo();
+      S.p.style.highlight = b.dataset.v;
+      $$('#hlCards .hl-card').forEach((x) => x.classList.toggle('on', x === b));
+      styleChanged(false);
+    }));
+    $('#inGlow').onchange = (e) => { pushUndo(); S.p.style.glow = e.target.checked; styleChanged(false); };
+    $('#btnThemeColors').onclick = () => {
+      const cs = getComputedStyle(document.documentElement);
+      const v = (n) => cs.getPropertyValue(n).trim();
+      pushUndo();
+      const st = S.p.style;
+      st.wipeColor = v('--amber'); st.wipeColor2 = v('--cyan'); st.textColor = '#FFFFFF';
+      st.outlineColor = v('--bg-deep'); if (st.bg.type === 'color') st.bg.color = v('--bg');
+      st.glow = !!document.documentElement.dataset.theme && v('--glow') !== 'none';
+      fillAll(); styleChanged(false);
+      toast('Lyrics now use the theme colours.');
+    };
     onSeg('#segPosition', (v) => { S.p.style.position = v; styleChanged(); });
     onSeg('#segBg', (v) => {
       pushUndo();
@@ -1276,6 +1379,13 @@
     $('#btnShowExport').onclick = () => sl.showInFolder($('#exportDone').dataset.path);
     $('#btnCancel').onclick = () => { $('#busyMsg').textContent = 'Stopping…'; sl.cancelJob(); };
 
+    // closing
+    sl.onCloseRequest((info) => showCloseSheet(info));
+    $('#btnCloseSave').onclick = closeSaving;
+    $('#btnCloseSaveAs').onclick = closeSaveAs;
+    $('#btnCloseExport').onclick = () => { $('#closeSheet').hidden = true; S.closeAfterExport = true; openExport(); };
+    $('#btnCloseCancel').onclick = () => { $('#closeSheet').hidden = true; S.closeAfterExport = false; };
+
     // app settings
     $('#btnCloseSettings').onclick = () => { $('#settings').hidden = true; };
     $('#btnCheckEngine').onclick = checkEngine;
@@ -1293,10 +1403,11 @@
       if (/\.singline$/i.test(p)) openProject(p);
     });
     window.addEventListener('keydown', (e) => {
-      const modalOpen = !$('#busy').hidden || !$('#settings').hidden || !$('#exportSheet').hidden;
+      const modalOpen = !$('#busy').hidden || !$('#settings').hidden || !$('#exportSheet').hidden || !$('#closeSheet').hidden;
       if (e.key === 'Escape') {
         if (!$('#settings').hidden) $('#settings').hidden = true;
-        else if (!$('#exportSheet').hidden) $('#exportSheet').hidden = true;
+        else if (!$('#exportSheet').hidden) { $('#exportSheet').hidden = true; S.closeAfterExport = false; }
+        else if (!$('#closeSheet').hidden) { $('#closeSheet').hidden = true; S.closeAfterExport = false; }
         return;
       }
       if ($('#app').hidden || modalOpen) return;
@@ -1328,10 +1439,12 @@
   }
 
   // For automated UI tests and troubleshooting from DevTools.
-  window.SLDebug = { get project() { return S.p; }, timeline };
+  window.SLDebug = { get project() { return S.p; }, get scene() { return S.scene; }, get fontAlias() { return S.fontAlias; }, rebuild: () => rebuild(), timeline };
 
   // ================================================================= boot
   async function boot() {
+    renderThemes();
+    applyTheme((await sl.getSettings()).theme || (document.documentElement.dataset.theme || 'midnight'), false);
     wire();
     requestAnimationFrame(frame);
     initFonts();

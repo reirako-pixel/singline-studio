@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('sl', {
   pendingOpen: () => ipcRenderer.invoke('project:pending-open'),
   onOpenFile: (fn) => ipcRenderer.on('project:open-file', (_e, p) => fn(p)),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveProjectAs: (dir, project) => ipcRenderer.invoke('project:save-as', { dir, project }),
+  onCloseRequest: (fn) => ipcRenderer.on('app:close-request', (_e, info) => fn(info)),
+  closeNow: () => ipcRenderer.invoke('app:close-now'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   // dialogs / shell
   openDialog: (kind) => ipcRenderer.invoke('dialog:open', kind),

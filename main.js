@@ -10,6 +10,7 @@ const IS_WIN = process.platform === 'win32';
 const EXE = IS_WIN ? '.exe' : '';
 let win = null;
 let currentJob = null; // { proc, kind }
+let allowClose = false; // set once the UI has confirmed closing
 
 // --------------------------------------------------------------------------
 // Paths: packaged app vs. running from source
@@ -69,6 +70,12 @@ function createWindow() {
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // Ask the UI first: it offers to save the project, save a copy, or export.
+  win.on('close', (e) => {
+    if (allowClose) return;
+    e.preventDefault();
+    win.webContents.send('app:close-request', { busy: !!currentJob });
+  });
   win.on('closed', () => { win = null; });
 }
 
@@ -542,6 +549,44 @@ ipcMain.handle('project:load', async (_e, file) => {
 
 ipcMain.handle('project:recent', async () => (readSettings().recent || []).filter((r) => fs.existsSync(r.file)));
 ipcMain.handle('project:pending-open', async () => projectArg(process.argv));
+
+ipcMain.handle('app:close-now', () => {
+  allowClose = true;
+  killJob();
+  if (win) win.close();
+  return true;
+});
+
+// "Save project as": copy the whole project folder (audio and all) to a new
+// place and point the copy's paths at its own files.
+ipcMain.handle('project:save-as', async (_e, { dir, project }) => {
+  const tp = testPick();
+  const r = tp !== undefined ? { canceled: !tp, filePath: tp } : await dialog.showSaveDialog(win, {
+    title: 'Save project as',
+    buttonLabel: 'Save project',
+    defaultPath: path.join(projectsRoot(), safeName((project.title || 'Untitled') + ' copy')),
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+  });
+  const picked = r.canceled ? null : r.filePath;
+  if (!picked) return null;
+  const dest = picked.replace(/\.singline$/i, '');
+  if (path.resolve(dest) === path.resolve(dir)) return path.join(dir, 'project.singline');
+  if (fs.existsSync(dest) && fs.readdirSync(dest).length) throw new Error('That folder already has files in it. Pick a new name.');
+  fs.mkdirSync(dest, { recursive: true });
+  fs.cpSync(dir, dest, { recursive: true });
+  const swap = (v) => (typeof v === 'string' && path.resolve(v).startsWith(path.resolve(dir) + path.sep)
+    ? path.join(dest, path.relative(dir, v)) : v);
+  const walk = (o) => {
+    if (Array.isArray(o)) return o.map(walk);
+    if (o && typeof o === 'object') return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, walk(v)]));
+    return swap(o);
+  };
+  const copy = walk(project);
+  const file = path.join(dest, 'project.singline');
+  fs.writeFileSync(file, JSON.stringify(copy, null, 1), 'utf8');
+  rememberRecent(file, copy.title);
+  return file;
+});
 
 ipcMain.handle('settings:get', async () => readSettings());
 ipcMain.handle('settings:set', async (_e, patch) => { const s = { ...readSettings(), ...patch }; writeSettings(s); return s; });

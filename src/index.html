@@ -31,6 +31,7 @@
 
     <div class="welcome-more">
       <button class="btn ghost" id="btnOpen">Open a project</button>
+      <button class="btn ghost" id="btnThemeWelcome">Theme</button>
     </div>
     <div class="recent" id="recentWrap" hidden>
       <h2>Recent projects</h2>
@@ -155,6 +156,9 @@
         <button class="icon-btn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
         <button class="icon-btn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
       </div>
+      <button class="icon-btn" id="btnTheme" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.8-.5-1.1.2-2.2 1.4-2.2H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>
+      </button>
       <button class="icon-btn" id="btnSettings" title="App settings and AI engine" aria-label="App settings">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
@@ -171,6 +175,7 @@
       <button data-sec="aspect" title="Aspect ratio"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/></svg></button>
       <button data-sec="layout" title="Layout"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="5" rx="1.5"/><rect x="4" y="14" width="16" height="5" rx="1.5"/></svg></button>
       <button data-sec="text" title="Text style"><svg viewBox="0 0 24 24"><path d="M5 20 11 4h2l6 16M8 14h8"/></svg></button>
+      <button data-sec="anim" title="Highlight animation"><svg viewBox="0 0 24 24"><path d="M4 17c3-6 5-10 8-10s5 4 8 10"/><path d="M4 21h16"/><circle cx="12" cy="7" r="1.5"/></svg></button>
       <button data-sec="background" title="Background"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></button>
       <button data-sec="title" title="Title card"><svg viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M6 12h12"/></svg></button>
       <button data-sec="cues" title="Cues and timers"><svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9"/></svg></button>
@@ -228,12 +233,12 @@
         <summary><span>Layout</span></summary>
         <div class="sec-body">
           <div class="field">Lyric layout
-            <div class="seg" id="segLayout"><button data-v="karaoke">Karaoke</button><button data-v="single">Single line</button><button data-v="duet">Duet</button></div>
+            <div class="seg" id="segLayout"><button data-v="karaoke">Karaoke</button><button data-v="scroll">Scrolling</button><button data-v="single">Single</button><button data-v="duet">Duet</button></div>
           </div>
           <div class="field">Position
             <div class="seg" id="segPosition"><button data-v="upper">Top</button><button data-v="center">Middle</button><button data-v="lower">Bottom</button></div>
           </div>
-          <p class="hint">Duet puts singer 1 on the left and singer 2 on the right. Set who sings each line in Lyrics.</p>
+          <p class="hint" id="layoutHint"></p>
         </div>
       </details>
 
@@ -267,9 +272,29 @@
             <label><input type="color" id="cWipe3">Both singers</label>
             <label><input type="color" id="cOutline">Outline</label>
           </div>
+          <button class="btn ghost small" id="btnThemeColors" style="margin-bottom:12px">Use the theme's colours for the lyrics</button>
           <label class="field">Outline width <output id="outOutline"></output>
             <input id="inOutline" type="range" min="0" max="12" step="1">
           </label>
+        </div>
+      </details>
+
+      <details class="sec" data-sec="anim">
+        <summary><span>Highlight animation</span></summary>
+        <div class="sec-body">
+          <p class="hint">How the words change from unsung to sung.</p>
+          <div class="hl-cards" id="hlCards">
+            <button class="hl-card" data-v="wipe"><strong>Smooth wipe</strong>
+              <span class="hl-demo wipe"><span>Sing along</span><span class="over">Sing along</span></span>
+              <small>The colour sweeps across each word as it is sung.</small></button>
+            <button class="hl-card" data-v="word"><strong>Word by word</strong>
+              <span class="hl-demo word"><span><b>Sing</b> <b>a</b><b>long</b></span><span class="over"><b>Sing</b> <b>a</b><b>long</b></span></span>
+              <small>Each word lights up the moment it starts.</small></button>
+            <button class="hl-card" data-v="fade"><strong>Fade in</strong>
+              <span class="hl-demo fade"><span><b>Sing</b> <b>a</b><b>long</b></span><span class="over"><b>Sing</b> <b>a</b><b>long</b></span></span>
+              <small>Each word softly fades into the sung colour.</small></button>
+          </div>
+          <label class="inline" style="margin-top:12px"><input type="checkbox" id="inGlow"> Neon glow on sung words <span class="glow-demo">Glow</span></label>
         </div>
       </details>
 
@@ -409,8 +434,14 @@
 
 <!-- ======================================================= app settings -->
 <div class="modal" id="settings" hidden>
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="setLabel">
-    <h2 id="setLabel">App settings</h2>
+  <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="setLabel">
+    <h2 id="setLabel">Settings</h2>
+    <h3 id="themeHeading" style="margin-top:4px">Theme</h3>
+    <p class="theme-group">Neon</p>
+    <div class="themes" id="themesNeon"></div>
+    <p class="theme-group">Calm</p>
+    <div class="themes" id="themesCalm"></div>
+    <h3>AI</h3>
     <label class="field">Run the AI on
       <select id="inDevice">
         <option value="auto">Automatic (NVIDIA GPU if available)</option>
@@ -422,6 +453,23 @@
     <p class="engine" id="engineInfo">Not checked yet.</p>
     <div class="row wrap"><button class="btn ghost" id="btnCheckEngine">Check AI engine</button><button class="btn ghost" id="btnOpenLogs">Open logs folder</button></div>
     <div class="row between"><p class="hint" id="aboutLine"></p><button class="btn primary" id="btnCloseSettings">Done</button></div>
+  </div>
+</div>
+
+<!-- ======================================================= closing -->
+<div class="modal" id="closeSheet" hidden>
+  <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="closeLabel" aria-describedby="closeMsg">
+    <h2 id="closeLabel">Close SingLine Studio?</h2>
+    <p class="hint" id="closeMsg"></p>
+    <div class="close-actions">
+      <button class="btn primary" id="btnCloseSave">Save project and close</button>
+      <button class="btn" id="btnCloseSaveAs">Save project as…</button>
+      <button class="btn" id="btnCloseExport">Export video first</button>
+    </div>
+    <div class="row between">
+      <span></span>
+      <button class="btn ghost" id="btnCloseCancel">Cancel</button>
+    </div>
   </div>
 </div>
 
